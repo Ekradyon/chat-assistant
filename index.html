@@ -1,0 +1,1646 @@
+<!doctype html>
+<html lang="es" data-theme="auto">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Asistente Hidrocarburos · ANH</title>
+    <meta name="description" content="Asistente conversacional Hidrocarburos ANH potenciado: progreso en tiempo real, telemetría, plantilla institucional, batería QA, cancelar, rerun.">
+    <link rel="stylesheet" href="assets/app.css?v=20260510-17">
+    <!-- vis-network local (paleta corporativa ANH, replica el ontology-viewer) -->
+    <script src="lib/vis-network.min.js"></script>
+    <!-- Marked.js para renderizar markdown del LLM (tablas, headings, bold, bullets) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <!-- DOMPurify para sanitizar HTML del markdown rendereado -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('ca:theme') || 'auto';
+                document.documentElement.dataset.theme = t;
+                if (t === 'auto') {
+                    var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    document.documentElement.classList.toggle('theme-dark', dark);
+                    document.documentElement.classList.toggle('theme-light', !dark);
+                } else {
+                    document.documentElement.classList.add('theme-' + t);
+                }
+                var sb = localStorage.getItem('ca:sidebar') || 'open';
+                document.documentElement.dataset.sidebar = sb;
+            } catch (e) {}
+        })();
+    </script>
+</head>
+<body x-data="chatAssistant()" x-init="init()" :class="{'no-anim': prefersReduced, 'qa-mode': qaMode, 'sidebar-collapsed': !sidebarOpen}">
+
+    <!-- ==============================================================
+         SVG Symbols
+         ============================================================== -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <defs>
+            <symbol id="logo-ca" viewBox="0 0 32 32">
+                <path d="M5 8 Q5 5 8 5 L24 5 Q27 5 27 8 L27 18 Q27 21 24 21 L14 21 L9 26 L9 21 L8 21 Q5 21 5 18 Z"
+                      fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M9 13 Q12 10 14 13 T19 13 T23 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+                <circle class="logo-pulse" cx="16" cy="13" r="1.6" fill="currentColor" opacity="0.9"/>
+            </symbol>
+            <symbol id="ico-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12 L22 4 L14 22 L11 13 Z"/>
+            </symbol>
+            <symbol id="ico-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+            <symbol id="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></symbol>
+            <symbol id="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+            <symbol id="ico-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+            <symbol id="ico-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+            <symbol id="ico-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+            <symbol id="ico-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></symbol>
+            <symbol id="ico-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+            <symbol id="ico-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></symbol>
+            <symbol id="ico-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+            <symbol id="ico-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+            <symbol id="ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+            <symbol id="ico-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+            <symbol id="ico-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></symbol>
+            <symbol id="ico-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></symbol>
+            <symbol id="ico-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></symbol>
+            <symbol id="ico-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M10 14h4"/></symbol>
+            <symbol id="ico-rerun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 14.85-6.85L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-14.85 6.85L3 16"/><path d="M3 21v-5h5"/></symbol>
+            <symbol id="ico-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4z"/></symbol>
+            <symbol id="ico-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+            <symbol id="ico-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></symbol>
+            <symbol id="ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+            <!-- Iconos feedback (Lucide-style 2026) -->
+            <symbol id="ico-thumbs-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7V10l4-7a2 2 0 0 1 3.92.78l.08.36z"/></symbol>
+            <symbol id="ico-thumbs-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H17v12l-4 7a2 2 0 0 1-3.92-.78l-.08-.36z"/></symbol>
+            <symbol id="ico-half" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+        </defs>
+    </svg>
+
+    <!-- ==============================================================
+         Top header
+         ============================================================== -->
+    <header class="topbar" role="banner">
+        <div class="topbar__brand">
+            <button type="button" class="btn-icon btn-icon--small btn-toggle-sidebar"
+                    @click="toggleSidebar()" :aria-pressed="!sidebarOpen"
+                    title="Mostrar/ocultar panel de herramientas (Ctrl+B)">
+                <svg class="ico" x-show="sidebarOpen" aria-hidden="true"><use href="#ico-chevron-left"/></svg>
+                <svg class="ico" x-show="!sidebarOpen" aria-hidden="true"><use href="#ico-chevron-right"/></svg>
+            </button>
+            <svg class="brand-logo" aria-hidden="true"><use href="#logo-ca"/></svg>
+            <div class="brand-text">
+                <strong>Asistente Hidrocarburos</strong>
+                <span class="brand-sub">ANH · BrainVT</span>
+            </div>
+        </div>
+
+        <div class="topbar__center">
+            <button type="button" class="btn-newchat" @click="nuevaConversacion()" :disabled="loading"
+                    title="Iniciar nueva conversación (Ctrl+N)">
+                <svg class="ico" aria-hidden="true"><use href="#ico-plus"/></svg>
+                <span>Nuevo chat</span>
+            </button>
+        </div>
+
+        <div class="topbar__actions">
+            <!-- Selector multi-modelo -->
+            <div class="dropdown" x-data="{open: false}" @click.outside="open = false">
+                <button type="button" class="btn-icon" @click="open = !open"
+                        :title="'Modelo activo: ' + modeloActual.label">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-cpu"/></svg>
+                    <span class="btn-label" x-text="modeloActual.shortLabel"></span>
+                </button>
+                <div class="dropdown__menu" x-show="open" x-transition x-cloak>
+                    <template x-for="m in modelos" :key="m.id">
+                        <button type="button" class="dropdown__item"
+                                :class="{'is-active': m.id === modeloActual.id}"
+                                @click="elegirModelo(m); open = false">
+                            <strong x-text="m.label"></strong>
+                            <small class="muted" x-text="m.desc"></small>
+                        </button>
+                    </template>
+                </div>
+            </div>
+            <button type="button" class="btn-icon" @click="toggleHistorial()"
+                    :class="{'is-active': historialOpen}" :aria-pressed="historialOpen"
+                    title="Historial de conversaciones" aria-label="Historial de conversaciones">
+                <svg class="ico" aria-hidden="true"><use href="#ico-clock"/></svg>
+                <span class="btn-label">Historial</span>
+            </button>
+            <button type="button" class="btn-icon" @click="qaMode = !qaMode"
+                    :class="{'is-active': qaMode}" :aria-pressed="qaMode"
+                    title="Modo batería QA (Ctrl+Q)">
+                <svg class="ico" aria-hidden="true"><use href="#ico-target"/></svg>
+                <span class="btn-label">QA</span>
+            </button>
+            <button type="button" class="btn-icon" @click="abrirAyuda = true"
+                    title="Atajos de teclado (?)" aria-label="Atajos de teclado">
+                <svg class="ico" aria-hidden="true"><use href="#ico-keyboard"/></svg>
+            </button>
+            <button type="button" class="btn-icon" @click="toggleTheme()"
+                    :title="'Cambiar tema (actual: ' + theme + ')'" aria-label="Cambiar tema">
+                <svg class="ico" x-show="theme === 'light'" aria-hidden="true"><use href="#ico-moon"/></svg>
+                <svg class="ico" x-show="theme === 'dark'" aria-hidden="true"><use href="#ico-sun"/></svg>
+                <svg class="ico" x-show="theme === 'auto'" aria-hidden="true"><use href="#ico-monitor"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- ==============================================================
+         Layout principal
+         ============================================================== -->
+    <main class="layout">
+
+        <!-- Sidebar -->
+        <aside class="sidebar" role="complementary" aria-label="Panel de herramientas" x-show="sidebarOpen" x-transition.opacity x-cloak>
+            <div class="sidebar__section">
+                <h2 class="section-label">Herramientas del agente</h2>
+                <p class="muted small">El LLM elige una de las 7 según la pregunta. Click sobre una para forzar (modo QA).</p>
+                <ul class="tools-list" role="list">
+                    <template x-for="t in tools" :key="t.name">
+                        <li class="tool-item" :class="{'is-forced': toolOverride === t.name}">
+                            <button type="button" class="tool-item__btn"
+                                    @click="toggleToolOverride(t.name)"
+                                    :aria-pressed="toolOverride === t.name"
+                                    :title="(toolOverride === t.name ? 'Quitar override de' : 'Forzar') + ' ' + t.name + ' — ' + t.tooltip">
+                                <span class="tool-level" x-text="t.level"></span>
+                                <span class="tool-name" x-text="t.label"></span>
+                                <svg class="ico tool-zap" aria-hidden="true" x-show="toolOverride === t.name"><use href="#ico-zap"/></svg>
+                            </button>
+                            <p class="tool-desc small muted" x-text="t.desc"></p>
+                            <details class="tool-help">
+                                <summary class="tool-help__head">
+                                    <svg class="ico" aria-hidden="true"><use href="#ico-help"/></svg>
+                                    <span>Cuándo usar</span>
+                                </summary>
+                                <div class="tool-help__body small" x-html="t.tooltipHtml"></div>
+                            </details>
+                        </li>
+                    </template>
+                </ul>
+                <button type="button" class="btn-link small" @click="toolOverride = null"
+                        x-show="toolOverride" title="Quitar override (Esc)">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                    Quitar override (auto)
+                </button>
+            </div>
+
+            <div class="sidebar__section">
+                <h2 class="section-label">Conversación actual</h2>
+                <dl class="meta-list small">
+                    <dt>ID</dt>
+                    <dd class="mono" x-text="conversacionId ? conversacionId.substring(0,8) + '…' : '—'"></dd>
+                    <dt>Turnos</dt>
+                    <dd x-text="turnos.length"></dd>
+                    <dt>Latencia ult.</dt>
+                    <dd x-text="ultimaLatenciaMs ? (ultimaLatenciaMs/1000).toFixed(1)+'s' : '—'"></dd>
+                </dl>
+            </div>
+        </aside>
+
+        <!-- Chat -->
+        <section class="chat" role="main" aria-label="Conversación">
+
+            <div class="chat__feed" x-ref="feed" tabindex="0" aria-live="polite" aria-atomic="false">
+
+                <!-- Empty state -->
+                <div class="empty-state" x-show="turnos.length === 0 && !loading" x-cloak>
+                    <svg class="empty-state__icon" aria-hidden="true"><use href="#logo-ca"/></svg>
+                    <h2 class="empty-state__title">Asistente Hidrocarburos ANH</h2>
+                    <p class="empty-state__lead">Pregúntame sobre cuencas, contratos, sismicas, pozos, yacimientos, normas y más del corpus oficial ANH.</p>
+                    <div class="empty-state__suggestions">
+                        <h3 class="section-label">Sugerencias</h3>
+                        <ul class="suggestions" role="list">
+                            <template x-for="s in sugerencias" :key="s">
+                                <li>
+                                    <button type="button" class="suggestion" @click="prompt = s; focusInput()" x-text="s"></button>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Lista de turnos -->
+                <div class="turns" x-show="turnos.length > 0" x-cloak>
+                    <template x-for="(t, idx) in turnos" :key="t.tempKey || t.turnoId || idx">
+                        <article class="turn-pair">
+                            <!-- User -->
+                            <div class="msg msg--user">
+                                <div class="msg__bubble">
+                                    <p x-text="t.pregunta"></p>
+                                </div>
+                                <button type="button" class="btn-tiny btn-edit-msg"
+                                        @click="editarPregunta(idx)" title="Editar y reenviar"
+                                        x-show="!t._pending && !loading">
+                                    <svg class="ico" aria-hidden="true"><use href="#ico-edit"/></svg>
+                                </button>
+                            </div>
+
+                            <!-- Assistant -->
+                            <div class="msg msg--assistant">
+                                <!-- Estado en vivo durante generación -->
+                                <div class="progreso-vivo" x-show="t._pending">
+                                    <div class="progreso-vivo__status">
+                                        <svg class="ico spinning" aria-hidden="true"><use href="#ico-spinner"/></svg>
+                                        <span class="progreso-vivo__paso" x-text="t._pasoActual || 'Iniciando…'"></span>
+                                        <span class="progreso-vivo__elapsed" x-text="t._elapsedSec ? '· ' + t._elapsedSec + 's' : ''"></span>
+                                    </div>
+                                    <ol class="progreso-vivo__pasos" x-show="(t._progresoPasos || []).length > 0">
+                                        <template x-for="(p, pi) in (t._progresoPasos || [])" :key="pi">
+                                            <li class="progreso-vivo__paso-item" :class="'progreso-vivo__paso-item--' + p.fase">
+                                                <svg class="ico" aria-hidden="true"><use :href="'#' + (p.icon || 'ico-check')"/></svg>
+                                                <span x-text="p.msg"></span>
+                                            </li>
+                                        </template>
+                                    </ol>
+                                </div>
+
+                                <!-- Respuesta final -->
+                                <div class="msg__bubble" x-show="!t._pending && t.bloques && t.bloques.length > 0">
+                                    <template x-for="(b, bi) in t.bloques" :key="bi">
+                                        <section class="bloque" :class="'bloque--' + b.tipo">
+                                            <h3 class="bloque__head" x-show="b.label" x-text="b.label"></h3>
+                                            <div class="bloque__body" x-html="b.html"></div>
+                                        </section>
+                                    </template>
+                                </div>
+
+                                <!-- Telemetría -->
+                                <details class="telemetria" x-show="!t._pending && t.telemetria">
+                                    <summary class="telemetria__head">
+                                        <svg class="ico" aria-hidden="true"><use href="#ico-clock"/></svg>
+                                        <span class="telemetria__tool">
+                                            <template x-if="t.toolInvocada">
+                                                <span><strong x-text="t.toolInvocada"></strong>
+                                                    <span class="badge" x-show="t.toolForzada" title="Tool forzada">forzada</span>
+                                                    <span class="badge badge--info" x-show="t.toolsInvocadas && t.toolsInvocadas.length > 1"
+                                                          x-text="'+' + ((t.toolsInvocadas?.length || 1) - 1) + ' más'"
+                                                          :title="(t.toolsInvocadas || []).map(x => x.name).join(' → ')"></span>
+                                                </span>
+                                            </template>
+                                            <template x-if="!t.toolInvocada">
+                                                <span class="muted">sin tool</span>
+                                            </template>
+                                        </span>
+                                        <span class="telemetria__total" x-text="((t.telemetria?.msTotal || 0)/1000).toFixed(1) + 's'"></span>
+                                    </summary>
+                                    <dl class="telemetria__detalle">
+                                        <dt>LLM turn 1 (decide)</dt><dd x-text="(t.telemetria?.msLlmTurn1 || 0) + ' ms'"></dd>
+                                        <dt>Tool</dt><dd x-text="(t.telemetria?.msTool || 0) + ' ms'"></dd>
+                                        <dt>LLM compose</dt><dd x-text="(t.telemetria?.msLlmTurn2 || 0) + ' ms'"></dd>
+                                        <dt>Tokens prompt</dt><dd x-text="t.telemetria?.tokensPrompt || 0"></dd>
+                                        <dt>Tokens completion</dt><dd x-text="t.telemetria?.tokensCompletion || 0"></dd>
+                                        <template x-if="t.toolArgs">
+                                            <div class="telemetria__args">
+                                                <dt>Args</dt>
+                                                <dd><code x-text="JSON.stringify(t.toolArgs)"></code></dd>
+                                            </div>
+                                        </template>
+                                        <template x-if="t.toolsInvocadas && t.toolsInvocadas.length > 1">
+                                            <div class="telemetria__args">
+                                                <dt>Cadena de tools</dt>
+                                                <dd>
+                                                    <ol class="tools-chain">
+                                                        <template x-for="(tc, tci) in t.toolsInvocadas" :key="tci">
+                                                            <li><strong x-text="tc.name"></strong>
+                                                                <code x-text="JSON.stringify(tc.args).substring(0, 80)"></code>
+                                                            </li>
+                                                        </template>
+                                                    </ol>
+                                                </dd>
+                                            </div>
+                                        </template>
+                                    </dl>
+                                </details>
+
+                                <!-- Citaciones -->
+                                <div class="citaciones" x-show="!t._pending && t.citaciones && t.citaciones.length > 0">
+                                    <template x-for="c in (t.citaciones || [])" :key="c.id">
+                                        <button type="button" class="cita-chip" @click="abrirDrawer(c, t.turnoId)"
+                                                :title="'Ver detalle del documento ' + c.id">
+                                            <svg class="ico" aria-hidden="true"><use href="#ico-doc"/></svg>
+                                            <span>id <strong x-text="c.id"></strong></span>
+                                        </button>
+                                    </template>
+                                </div>
+
+                                <!-- Acciones -->
+                                <div class="msg__actions" x-show="!t._pending">
+                                    <button type="button" class="btn-tiny" @click="copiarRespuesta(t)" title="Copiar respuesta">
+                                        <svg class="ico" aria-hidden="true"><use href="#ico-copy"/></svg>
+                                        <span class="btn-label">Copiar</span>
+                                    </button>
+                                    <button type="button" class="btn-tiny" @click="rerunTurno(t, idx)" title="Re-ejecutar pregunta (puede forzar otra tool)">
+                                        <svg class="ico" aria-hidden="true"><use href="#ico-rerun"/></svg>
+                                        <span class="btn-label">Re-ejecutar</span>
+                                    </button>
+                                    <button type="button" class="btn-tiny" @click="verTravesia(t)" :disabled="!t.turnoId" title="Ver el grafo del razonamiento (cómo el agente conectó la información)">
+                                        <svg class="ico" aria-hidden="true"><use href="#ico-target"/></svg>
+                                        <span class="btn-label">Ver travesía</span>
+                                    </button>
+                                    <!-- Feedback usuario (iconos Lucide 2026) -->
+                                    <div class="msg__feedback" :class="{'is-sent': esFeedbackEnviado(t)}">
+                                        <span class="msg__feedback-label muted small" x-show="!esFeedbackEnviado(t)">¿Útil?</span>
+                                        <span class="msg__feedback-sent muted small" x-show="esFeedbackEnviado(t)">
+                                            <svg class="ico" aria-hidden="true"><use href="#ico-check"/></svg>
+                                            <span x-text="'Marcaste: ' + (feedbackVeredicto(t) || '')"></span>
+                                        </span>
+                                        <button type="button" class="btn-tiny btn-feedback btn-feedback--up"
+                                                :disabled="esFeedbackEnviado(t)"
+                                                @click.stop="enviarFeedback(t, 'correcta', null)" title="Respuesta correcta">
+                                            <svg class="ico" aria-hidden="true"><use href="#ico-thumbs-up"/></svg>
+                                            <span class="visually-hidden">Correcta</span>
+                                        </button>
+                                        <button type="button" class="btn-tiny btn-feedback btn-feedback--mid"
+                                                :disabled="esFeedbackEnviado(t)"
+                                                @click.stop="pedirComentarioFeedback(t, 'parcial')" title="Respuesta parcial / mejorable">
+                                            <svg class="ico" aria-hidden="true"><use href="#ico-half"/></svg>
+                                            <span class="visually-hidden">Parcial</span>
+                                        </button>
+                                        <button type="button" class="btn-tiny btn-feedback btn-feedback--down"
+                                                :disabled="esFeedbackEnviado(t)"
+                                                @click.stop="pedirComentarioFeedback(t, 'incorrecta')" title="Respuesta incorrecta">
+                                            <svg class="ico" aria-hidden="true"><use href="#ico-thumbs-down"/></svg>
+                                            <span class="visually-hidden">Incorrecta</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    </template>
+                </div>
+
+                <!-- Error -->
+                <div class="error-bubble" x-show="lastError" x-cloak>
+                    <strong>Error:</strong> <span x-text="lastError"></span>
+                    <button type="button" class="btn-tiny" @click="lastError = ''">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Composer NORMAL -->
+            <form class="composer" x-show="!qaMode" x-cloak @submit.prevent="enviar()">
+                <label for="composer-input" class="visually-hidden">Tu pregunta</label>
+                <div class="composer__input-wrap">
+                    <textarea id="composer-input"
+                              x-ref="input"
+                              x-model="prompt"
+                              @input="autoSaveDraft()"
+                              placeholder="Escribe tu pregunta…  (Enter envía · Shift+Enter nueva línea · Cmd+K para foco)"
+                              rows="2"
+                              :disabled="loading"
+                              @keydown.enter.prevent="if (!$event.shiftKey) enviar()"
+                              @keydown.escape="cancelar()"></textarea>
+                    <button type="button" class="composer__attach"
+                            @click="abrirUpload = true" :disabled="loading"
+                            title="Adjuntar PDF, imagen o audio">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-paperclip"/></svg>
+                    </button>
+                </div>
+                <!-- Chips de adjuntos pendientes para esta pregunta -->
+                <div class="composer__adjuntos" x-show="adjuntosPendientes.length > 0" x-cloak>
+                    <template x-for="(a, i) in adjuntosPendientes" :key="i">
+                        <span class="composer__adjunto-chip">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-paperclip"/></svg>
+                            <span x-text="a.nombre"></span>
+                            <small class="muted" x-text="a.tamanoMB.toFixed(1) + ' MB'"></small>
+                            <button type="button" @click="quitarAdjuntoPendiente(i)" title="Quitar">
+                                <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                            </button>
+                        </span>
+                    </template>
+                </div>
+                <div class="composer__row">
+                    <span class="composer__hint small muted">
+                        <span x-show="!toolOverride && !loading">El LLM elige tool · modelo: <strong x-text="modeloActual.shortLabel"></strong></span>
+                        <span x-show="toolOverride && !loading" class="composer__override">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-zap"/></svg>
+                            Forzando <strong x-text="toolOverride"></strong>
+                        </span>
+                        <span x-show="loading" class="composer__loading-hint">
+                            <svg class="ico spinning" aria-hidden="true"><use href="#ico-spinner"/></svg>
+                            <span x-text="globalPasoActual || 'Procesando…'"></span>
+                        </span>
+                    </span>
+                    <button type="button" class="btn-secondary" @click="cancelar()" x-show="loading"
+                            title="Cancelar request en curso (Esc)">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-stop"/></svg>
+                        <span>Detener</span>
+                    </button>
+                    <button type="submit" class="btn-primary" :disabled="loading || !prompt.trim()" x-show="!loading">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-send"/></svg>
+                        <span>Enviar</span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Composer QA -->
+            <form class="composer composer--qa" x-show="qaMode" x-cloak @submit.prevent="ejecutarBateria()">
+                <header class="composer__qa-head">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-target"/></svg>
+                    <strong>Modo batería QA</strong>
+                    <span class="muted small">una pregunta por línea · opcional <code>| tool=anhX</code> para validar routing</span>
+                </header>
+                <textarea id="qa-input" x-model="qaPreguntas" rows="10" spellcheck="false"
+                          placeholder="Una pregunta por linea. Sufijo opcional `| tool=anhX` para validar el routing.&#10;&#10;fecha de firma del contrato Buganviles                | tool=anhLookupSimple&#10;cuantos contratos hay por cuenca                       | tool=anhAgregarHidrocarburos&#10;que dice el oficio sobre el programa exploratorio      | tool=anhRecuperarVinculosHidrocarburos&#10;coordenadas del bloque Llanos 27                       | tool=anhGeoespacialHidrocarburos&#10;que cuencas sedimentarias hay en Colombia              | tool=anhBuscarGeoVisorHidrocarburos"
+                          :disabled="loading"></textarea>
+                <div class="composer__row">
+                    <button type="button" class="btn-link small" @click="qaResultados = []; qaPreguntas = ''" :disabled="loading">Limpiar</button>
+                    <button type="button" class="btn-link small" @click="exportarCsv()" :disabled="qaResultados.length === 0">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-download"/></svg>
+                        Exportar CSV
+                    </button>
+                    <button type="button" class="btn-secondary" @click="cancelar()" x-show="loading">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-stop"/></svg>
+                        Detener
+                    </button>
+                    <button type="submit" class="btn-primary" :disabled="loading || !qaPreguntas.trim()" x-show="!loading">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-zap"/></svg>
+                        Ejecutar batería
+                    </button>
+                </div>
+                <div class="qa-table-wrap" x-show="qaResultados.length > 0">
+                    <table class="qa-table">
+                        <thead><tr><th>#</th><th>Pregunta</th><th>Tool esperada</th><th>Tool obtenida</th><th>Status</th><th>ms</th></tr></thead>
+                        <tbody>
+                            <template x-for="(r, i) in qaResultados" :key="i">
+                                <tr :class="'qa-row-' + r.status">
+                                    <td x-text="i+1"></td>
+                                    <td class="qa-q" x-text="r.pregunta"></td>
+                                    <td class="mono" x-text="r.toolEsperada || '—'"></td>
+                                    <td class="mono" x-text="r.toolObtenida || '—'"></td>
+                                    <td><span class="qa-pill" :class="'qa-pill--' + r.status" x-text="r.status.toUpperCase()"></span></td>
+                                    <td x-text="r.msTotal"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        </section>
+
+        <!-- Drawer cita -->
+        <aside class="drawer drawer--cita" role="dialog" aria-label="Detalle del documento citado"
+               :class="{'is-open': drawerCita !== null}" :aria-hidden="drawerCita === null">
+            <header class="drawer__head">
+                <h2><svg class="ico" aria-hidden="true"><use href="#ico-doc"/></svg> Documento citado</h2>
+                <button type="button" class="btn-icon" @click="drawerCita = null" aria-label="Cerrar drawer">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </header>
+            <div class="drawer__body" x-show="drawerCita">
+                <dl class="drawer__meta">
+                    <dt>ID</dt><dd class="mono" x-text="drawerCita?.id"></dd>
+                    <dt>Título</dt><dd x-text="drawerCita?._enriquecido?.documento?.titulo || drawerCita?.titulo || '—'"></dd>
+                    <dt>Línea de la fuente</dt><dd x-text="drawerCita?.linea || '—'"></dd>
+                    <dt>Ruta</dt>
+                    <dd>
+                        <code class="ruta-unc" x-show="drawerCita?.ruta || drawerCita?._enriquecido?.documento?.ruta"
+                              x-text="drawerCita?.ruta || drawerCita?._enriquecido?.documento?.ruta"></code>
+                        <span class="muted" x-show="!drawerCita?.ruta && !drawerCita?._enriquecido?.documento?.ruta">No disponible</span>
+                    </dd>
+                    <template x-if="drawerCita?._enriquecido?.documento">
+                        <template x-for="(v, k) in {'Páginas':'paginas','Palabras':'palabras','Fecha doc':'fechaDocumento','Fase':'faseActual','Entidad':'entidadClasificada'}" :key="k">
+                            <template x-if="drawerCita._enriquecido.documento[v]">
+                                <div style="display:contents">
+                                    <dt x-text="k"></dt><dd x-text="drawerCita._enriquecido.documento[v]"></dd>
+                                </div>
+                            </template>
+                        </template>
+                    </template>
+                </dl>
+                <button type="button" class="btn-link" @click="copiarRuta()" x-show="drawerCita?.ruta">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-copy"/></svg>
+                    Copiar ruta UNC
+                </button>
+
+                <!-- Enriquecimiento Bloque 4: chunks usados + conceptos + relacionados -->
+                <div class="drawer-cita-cargando" x-show="drawerCita?._cargando">
+                    <svg class="ico ico-spin" aria-hidden="true"><use href="#ico-spinner"/></svg>
+                    Cargando detalle…
+                </div>
+
+                <template x-if="drawerCita?._enriquecido && !drawerCita?._cargando">
+                    <div>
+                        <!-- Chunks usados en esta respuesta -->
+                        <section class="drawer-section" x-show="(drawerCita._enriquecido.chunks || []).length > 0">
+                            <h3>Chunks usados en esta respuesta</h3>
+                            <ul class="chunk-list">
+                                <template x-for="(ch, i) in drawerCita._enriquecido.chunks" :key="ch.id">
+                                    <li class="chunk-item">
+                                        <div class="chunk-meta muted small">
+                                            <span x-text="'#' + (i + 1)"></span>
+                                            <span x-show="ch.score !== null" x-text="'score ' + ch.score.toFixed(2)"></span>
+                                            <span class="chunk-id mono" x-text="'embedId=' + ch.embeddingId"></span>
+                                        </div>
+                                        <pre class="chunk-text" x-text="_sanitizeBackend(ch.textoChunk)"></pre>
+                                    </li>
+                                </template>
+                            </ul>
+                        </section>
+
+                        <!-- Conceptos del doc -->
+                        <section class="drawer-section" x-show="(drawerCita._enriquecido.conceptos || []).length > 0">
+                            <h3>Conceptos del documento</h3>
+                            <div class="concept-cloud">
+                                <template x-for="c in drawerCita._enriquecido.conceptos" :key="c.id || c.etiqueta">
+                                    <span class="concept-chip" :title="c.fuente ? ('fuente: ' + c.fuente) : ''">
+                                        <span x-text="c.etiqueta"></span>
+                                        <small class="muted" x-show="c.score" x-text="'(' + (c.score * 100).toFixed(0) + '%)'"></small>
+                                    </span>
+                                </template>
+                            </div>
+                        </section>
+
+                        <!-- Docs relacionados -->
+                        <section class="drawer-section" x-show="(drawerCita._enriquecido.docsRelacionados || []).length > 0">
+                            <h3>Documentos relacionados (vía conceptos compartidos)</h3>
+                            <ul class="rel-doc-list">
+                                <template x-for="d in drawerCita._enriquecido.docsRelacionados" :key="d.id">
+                                    <li class="rel-doc-item">
+                                        <span class="rel-doc-id mono" x-text="'id=' + d.id"></span>
+                                        <span class="rel-doc-titulo" x-text="d.titulo"></span>
+                                        <span class="rel-doc-shared muted small" x-text="d.conceptosCompartidos + ' conceptos comp.'"></span>
+                                    </li>
+                                </template>
+                            </ul>
+                        </section>
+
+                        <p class="muted small" x-show="(drawerCita._enriquecido.chunks || []).length === 0
+                                                       && (drawerCita._enriquecido.conceptos || []).length === 0
+                                                       && (drawerCita._enriquecido.docsRelacionados || []).length === 0">
+                            Sin enriquecimiento adicional para este documento.
+                        </p>
+                    </div>
+                </template>
+            </div>
+        </aside>
+    </main>
+
+    <div class="drawer-backdrop drawer-backdrop--cita" x-show="drawerCita !== null" @click="drawerCita = null" aria-hidden="true"></div>
+
+    <!-- Drawer: Travesía (grafo de razonamiento) -->
+    <div class="drawer-backdrop" x-show="travesiaOpen" @click="cerrarTravesia()" x-transition.opacity x-cloak aria-hidden="true"></div>
+    <aside class="drawer drawer--travesia" :class="{'is-open': travesiaOpen, 'is-expanded': travesiaExpandida}"
+           role="dialog" aria-labelledby="drawer-travesia-title" :aria-hidden="!travesiaOpen">
+        <!-- Resize handle: drag horizontal para redimensionar el drawer -->
+        <div class="resize-handle resize-handle--left"
+             @mousedown="iniciarResizeDrawer($event)"
+             role="separator" aria-orientation="vertical"
+             aria-label="Redimensionar panel"
+             title="Arrastra para redimensionar">
+            <div class="resize-handle__grip"></div>
+        </div>
+        <header class="drawer__head">
+            <h2 id="drawer-travesia-title">
+                <svg class="ico" aria-hidden="true"><use href="#ico-target"/></svg>
+                Travesía del razonamiento
+            </h2>
+            <div class="drawer__head-actions">
+                <button type="button" class="btn-icon btn-icon--small"
+                        @click="travesiaExpandida = !travesiaExpandida; $nextTick(() => { if (_visTravesia) _visTravesia.fit({animation: {duration: 250}}); })"
+                        :title="travesiaExpandida ? 'Restaurar tamaño' : 'Expandir a pantalla completa'"
+                        :aria-pressed="travesiaExpandida">
+                    <svg class="ico" x-show="!travesiaExpandida" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                    </svg>
+                    <svg class="ico" x-show="travesiaExpandida" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>
+                    </svg>
+                </button>
+                <button type="button" class="btn-icon" @click="cerrarTravesia()" aria-label="Cerrar travesía">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </div>
+        </header>
+        <div class="drawer__body">
+            <div class="travesia-loading" x-show="travesiaCargando">
+                <svg class="ico ico-spin" aria-hidden="true"><use href="#ico-spinner"/></svg>
+                Armando grafo…
+            </div>
+            <div class="travesia-error" x-show="travesiaError && !travesiaCargando" x-text="travesiaError"></div>
+            <template x-if="travesiaData && !travesiaCargando">
+                <div class="travesia-content">
+                    <div class="travesia-pregunta">
+                        <span class="muted small">Pregunta:</span>
+                        <strong x-text="travesiaData.pregunta"></strong>
+                    </div>
+
+                    <!-- Tabs ARRIBA: Grafo · Métricas · Nodos · Resumen -->
+                    <div class="travesia-tabs" role="tablist" aria-label="Vistas del razonamiento">
+                        <button type="button" role="tab"
+                                class="travesia-tab"
+                                :class="travesiaTabActiva === 'grafo' ? 'is-active' : ''"
+                                :aria-selected="travesiaTabActiva === 'grafo'"
+                                @click="travesiaTabActiva = 'grafo'; $nextTick(() => { if (_visTravesia) _visTravesia.fit({animation: {duration: 200}}); })">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-target"/></svg>
+                            <span>Grafo</span>
+                        </button>
+                        <button type="button" role="tab"
+                                class="travesia-tab"
+                                :class="travesiaTabActiva === 'metricas' ? 'is-active' : ''"
+                                :aria-selected="travesiaTabActiva === 'metricas'"
+                                @click="travesiaTabActiva = 'metricas'">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-clock"/></svg>
+                            <span>Métricas</span>
+                        </button>
+                        <button type="button" role="tab"
+                                class="travesia-tab"
+                                :class="travesiaTabActiva === 'nodos' ? 'is-active' : ''"
+                                :aria-selected="travesiaTabActiva === 'nodos'"
+                                @click="travesiaTabActiva = 'nodos'">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-doc"/></svg>
+                            <span>Nodos por tipo</span>
+                            <span class="badge" x-text="(travesiaData.nodes || []).length"></span>
+                        </button>
+                        <button type="button" role="tab"
+                                class="travesia-tab"
+                                :class="travesiaTabActiva === 'narrativa' ? 'is-active' : ''"
+                                :aria-selected="travesiaTabActiva === 'narrativa'"
+                                @click="travesiaTabActiva = 'narrativa'">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-help"/></svg>
+                            <span>Resumen</span>
+                        </button>
+                    </div>
+
+                    <!-- Tab content: Grafo (default) -->
+                    <div class="travesia-tab-panel travesia-tab-panel--grafo" role="tabpanel"
+                         x-show="travesiaTabActiva === 'grafo'" x-cloak>
+                        <!-- Leyenda interactiva: chips por tipo, click filtra el grafo -->
+                        <div class="grafo-leyenda" role="toolbar" aria-label="Leyenda y filtro por tipo">
+                            <span class="grafo-leyenda__title">Tipos</span>
+                            <template x-for="lt in travesiaTiposPresentes" :key="lt.tipo">
+                                <button type="button"
+                                        class="grafo-leyenda__chip"
+                                        :class="['grafo-leyenda__chip--' + lt.tipo, travesiaTipoFiltro === lt.tipo ? 'is-active' : '']"
+                                        @click="toggleTravesiaTipoFiltro(lt.tipo)"
+                                        :title="'Aislar nodos de tipo ' + lt.label">
+                                    <span class="grafo-leyenda__dot" aria-hidden="true"></span>
+                                    <span x-text="lt.label"></span>
+                                </button>
+                            </template>
+                            <span class="grafo-leyenda__hint muted small">
+                                Click chip → aislar · Hover nodo → 1-hop · Click → detalle · Doble-click concept → drill-down
+                            </span>
+                        </div>
+
+                        <div class="travesia-grafo-wrap">
+                        <!-- Mini-toolbar flotante del grafo: layout + search + fit/zoom/reset/png -->
+                        <div class="grafo-toolbar" role="toolbar" aria-label="Controles del grafo">
+                            <!-- Selector de layout: 4 modos profesionales (todos estaticos) -->
+                            <div class="grafo-toolbar__group" role="radiogroup" aria-label="Layout del grafo">
+                                <button type="button" class="grafo-toolbar__seg"
+                                        :class="travesiaLayout === 'pipeline' ? 'is-active' : ''"
+                                        @click="cambiarLayoutTravesia('pipeline')"
+                                        title="Narrativo izquierda → derecha">
+                                    Pipeline
+                                </button>
+                                <button type="button" class="grafo-toolbar__seg"
+                                        :class="travesiaLayout === 'vertical' ? 'is-active' : ''"
+                                        @click="cambiarLayoutTravesia('vertical')"
+                                        title="Árbol jerárquico arriba → abajo">
+                                    Vertical
+                                </button>
+                                <button type="button" class="grafo-toolbar__seg"
+                                        :class="travesiaLayout === 'radial' ? 'is-active' : ''"
+                                        @click="cambiarLayoutTravesia('radial')"
+                                        title="Radial concéntrico (pregunta al centro)">
+                                    Radial
+                                </button>
+                                <button type="button" class="grafo-toolbar__seg"
+                                        :class="travesiaLayout === 'compacto' ? 'is-active' : ''"
+                                        @click="cambiarLayoutTravesia('compacto')"
+                                        title="Compacto (force-directed, se congela tras estabilizar)">
+                                    Compacto
+                                </button>
+                            </div>
+                            <label class="grafo-toolbar__search-wrap">
+                                <span class="visually-hidden">Buscar nodo en el grafo</span>
+                                <input type="search" class="grafo-toolbar__search"
+                                       x-model="travesiaBusqueda"
+                                       @input.debounce.250ms="aplicarBusquedaTravesia()"
+                                       placeholder="Buscar nodo…"
+                                       aria-label="Buscar nodo en el grafo">
+                            </label>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoFit()"
+                                    title="Ajustar al viewport (F)" aria-label="Ajustar al viewport">
+                                <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/>
+                                </svg>
+                            </button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoZoom(1.25)"
+                                    title="Acercar (+)" aria-label="Acercar">
+                                <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/>
+                                </svg>
+                            </button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoZoom(0.8)"
+                                    title="Alejar (-)" aria-label="Alejar">
+                                <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6"/>
+                                </svg>
+                            </button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoReset()"
+                                    title="Reset filtros + ajuste (R)" aria-label="Reset">
+                                <svg class="ico" aria-hidden="true"><use href="#ico-rerun"/></svg>
+                            </button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoExportarPng()"
+                                    title="Exportar PNG" aria-label="Exportar PNG">
+                                <svg class="ico" aria-hidden="true"><use href="#ico-download"/></svg>
+                            </button>
+                        </div>
+
+                        <div class="travesia-grafo" id="cy-travesia-container"></div>
+
+                        <!-- Panel detalle persistente del nodo seleccionado -->
+                        <aside class="nodo-detalle" x-show="travesiaNodoSelect" x-transition.opacity x-cloak
+                               role="region" aria-label="Detalle del nodo seleccionado">
+                            <header class="nodo-detalle__head">
+                                <span class="nodo-detalle__tipo"
+                                      :class="'nodo-detalle__tipo--' + (travesiaNodoSelect?.type || '')"
+                                      x-text="_typeLabel(travesiaNodoSelect?.type)"></span>
+                                <button type="button" class="btn-icon btn-icon--small"
+                                        @click="travesiaNodoSelect = null" aria-label="Cerrar detalle">
+                                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                                </button>
+                            </header>
+                            <h4 class="nodo-detalle__label" x-text="travesiaNodoSelect?.label"></h4>
+
+                            <!-- Tool: descripcion del catalogo + level + result preview -->
+                            <template x-if="travesiaNodoSelect?.type === 'tool'">
+                                <div class="nodo-detalle__tool-info">
+                                    <template x-if="_toolMeta(travesiaNodoSelect.label)">
+                                        <div>
+                                            <span class="nodo-detalle__tool-level" x-text="_toolMeta(travesiaNodoSelect.label).level"></span>
+                                            <span class="nodo-detalle__tool-tooltip" x-text="_toolMeta(travesiaNodoSelect.label).tooltip"></span>
+                                            <p class="nodo-detalle__desc" x-text="_toolMeta(travesiaNodoSelect.label).desc"></p>
+                                        </div>
+                                    </template>
+                                    <!-- Result preview de lo que retornó la tool -->
+                                    <details class="tool-result" x-show="travesiaNodoSelect?.result_preview"
+                                             :open="travesiaNodoSelect?.result_size_bytes < 800">
+                                        <summary class="tool-result__head">
+                                            <span>↳ Retorno de la herramienta</span>
+                                            <span class="muted small">
+                                                <span x-show="travesiaNodoSelect?.result_size_bytes"
+                                                      x-text="travesiaNodoSelect.result_size_bytes + ' B'"></span>
+                                                <span x-show="travesiaNodoSelect?.ms"
+                                                      x-text="'· ' + travesiaNodoSelect.ms + ' ms'"></span>
+                                            </span>
+                                        </summary>
+                                        <pre class="tool-result__pre" x-text="_sanitizeBackend(travesiaNodoSelect?.result_preview)"></pre>
+                                        <div class="tool-result__keys" x-show="(travesiaNodoSelect?.result_keys || []).length > 0">
+                                            <span class="muted small">Claves del JSON: </span>
+                                            <template x-for="k in (travesiaNodoSelect?.result_keys || [])" :key="k">
+                                                <code class="tool-result__key" x-text="k"></code>
+                                            </template>
+                                        </div>
+                                    </details>
+                                    <p class="muted small" x-show="!travesiaNodoSelect?.result_preview">
+                                        El retorno de esta herramienta no se capturó (turno previo a la captura). En próximos turnos se mostrará aquí.
+                                    </p>
+                                </div>
+                            </template>
+
+                            <p class="nodo-detalle__desc"
+                               x-show="travesiaNodoSelect?.type !== 'tool' && (travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip) && (travesiaNodoSelect.descripcion || travesiaNodoSelect.tooltip).trim()"
+                               x-text="travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip"></p>
+                            <p class="nodo-detalle__desc muted small"
+                               x-show="travesiaNodoSelect?.type !== 'tool' && (!(travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip) || !(travesiaNodoSelect.descripcion || travesiaNodoSelect.tooltip).trim())">
+                                Sin descripción adicional. Los metadatos disponibles se listan abajo.
+                            </p>
+                            <dl class="nodo-detalle__meta">
+                                <div class="nodo-detalle__row">
+                                    <dt>ID interno</dt>
+                                    <dd class="mono small" x-text="travesiaNodoSelect?.id"></dd>
+                                </div>
+                                <template x-if="typeof travesiaNodoSelect?.confianza === 'number'">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Confianza</dt>
+                                        <dd><span x-text="(travesiaNodoSelect.confianza * 100).toFixed(0) + '%'"></span></dd>
+                                    </div>
+                                </template>
+                                <template x-if="typeof travesiaNodoSelect?.score === 'number'">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Score</dt>
+                                        <dd><span x-text="travesiaNodoSelect.score.toFixed(3)"></span></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.docId">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Doc ID</dt>
+                                        <dd class="mono" x-text="travesiaNodoSelect.docId"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.iter">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Iteración</dt>
+                                        <dd x-text="travesiaNodoSelect.iter"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.tipo_concepto">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Tipo concepto</dt>
+                                        <dd x-text="travesiaNodoSelect.tipo_concepto"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.tabla">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Tabla glosario</dt>
+                                        <dd class="mono small" x-text="travesiaNodoSelect.tabla"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.uri">
+                                    <div class="nodo-detalle__row">
+                                        <dt>URI</dt>
+                                        <dd class="mono small" x-text="travesiaNodoSelect.uri"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.ruta">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Ruta</dt>
+                                        <dd class="mono small" x-text="travesiaNodoSelect.ruta"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.args">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Args</dt>
+                                        <dd class="mono small" x-text="JSON.stringify(travesiaNodoSelect.args)"></dd>
+                                    </div>
+                                </template>
+                            </dl>
+                            <footer class="nodo-detalle__actions">
+                                <button type="button" class="btn-link small"
+                                        x-show="(travesiaNodoSelect?.type === 'concept' || travesiaNodoSelect?.type === 'concept_related') && /^c\d+/.test(travesiaNodoSelect?.id || '')"
+                                        @click="nodoDetalleAccionPrincipal(travesiaNodoSelect)">
+                                    → Explorar sub-grafo
+                                </button>
+                                <button type="button" class="btn-link small"
+                                        x-show="travesiaNodoSelect?.type === 'doc' && travesiaNodoSelect?.docId"
+                                        @click="nodoDetalleAccionPrincipal(travesiaNodoSelect)">
+                                    → Ver detalle del documento
+                                </button>
+                                <button type="button" class="btn-link small"
+                                        x-show="travesiaNodoSelect?.type === 'tool'"
+                                        @click="nodoDetalleAccionPrincipal(travesiaNodoSelect)">
+                                    → Forzar esta tool
+                                </button>
+                            </footer>
+                        </aside>
+                    </div>
+                    </div><!-- /travesia-tab-panel--grafo -->
+
+                    <!-- Tab content: Métricas -->
+                    <div class="travesia-tab-panel" role="tabpanel"
+                         x-show="travesiaTabActiva === 'metricas' && travesiaData.metricas" x-cloak>
+                        <dl class="metricas-grid metricas-grid--rich">
+                            <dt>Tiempo total</dt><dd><strong x-text="((travesiaData.metricas.msTotal || 0) / 1000).toFixed(1) + ' s'"></strong></dd>
+                            <dt>LLM decide tool</dt><dd><span x-text="(travesiaData.metricas.msLlmTurn1 || 0) + ' ms'"></span></dd>
+                            <dt>Ejecución tool</dt><dd><span x-text="(travesiaData.metricas.msTool || 0) + ' ms'"></span></dd>
+                            <dt>LLM compose respuesta</dt><dd><span x-text="(travesiaData.metricas.msLlmTurn2 || 0) + ' ms'"></span></dd>
+                            <dt>Tools invocadas</dt><dd><span x-text="travesiaData.metricas.toolsInvocadas || 0"></span></dd>
+                            <dt>Conceptos detectados</dt><dd><span x-text="travesiaData.metricas.conceptosDetectados || 0"></span></dd>
+                            <dt>Documentos consultados</dt><dd><span x-text="travesiaData.metricas.docsConsultados || 0"></span></dd>
+                            <dt>Tokens prompt / compose</dt><dd>
+                                <span x-text="travesiaData.metricas.tokensPrompt || 0"></span> /
+                                <span x-text="travesiaData.metricas.tokensCompletion || 0"></span>
+                            </dd>
+                        </dl>
+                    </div>
+
+                    <!-- Tab content: Nodos por tipo (agrupado) -->
+                    <div class="travesia-tab-panel" role="tabpanel"
+                         x-show="travesiaTabActiva === 'nodos'" x-cloak>
+                        <p class="muted small" style="margin-bottom: var(--space-3)">
+                            Cada nodo del grafo agrupado por su rol en el pipeline.
+                            Click en el encabezado para colapsar/expandir.
+                        </p>
+                        <template x-for="g in travesiaNodosPorTipo" :key="g.tipo">
+                            <details class="tipo-group" :open="!_expandidos[g.tipo]">
+                                <summary class="tipo-group__head" @click.prevent="toggleTipoExpand(g.tipo)">
+                                    <span class="tipo-group__badge" :class="'nodo-detalle__tipo nodo-detalle__tipo--' + g.tipo" x-text="g.label"></span>
+                                    <span class="tipo-group__count" x-text="g.count"></span>
+                                </summary>
+                                <ul class="tipo-group__list">
+                                    <template x-for="n in g.items" :key="n.id">
+                                        <li class="tipo-group__item" @click="seleccionarNodoDesdeListado(n)"
+                                            :title="'Click → ver detalle en el grafo'">
+                                            <strong x-text="n.label"></strong>
+                                            <small class="muted" x-show="n.tooltip || n.descripcion"
+                                                   x-text="(n.tooltip || n.descripcion || '').substring(0, 180)"></small>
+                                            <div class="tipo-group__meta">
+                                                <span class="tipo-group__chip" x-show="typeof n.confianza === 'number'"
+                                                      x-text="'conf ' + (n.confianza * 100).toFixed(0) + '%'"></span>
+                                                <span class="tipo-group__chip" x-show="typeof n.score === 'number'"
+                                                      x-text="'score ' + (typeof n.score === 'number' ? n.score.toFixed(2) : '')"></span>
+                                                <span class="tipo-group__chip" x-show="n.docId"
+                                                      x-text="'doc ' + n.docId"></span>
+                                                <span class="tipo-group__chip" x-show="n.iter"
+                                                      x-text="'iter ' + n.iter"></span>
+                                                <span class="tipo-group__chip" x-show="n.tipo_concepto"
+                                                      x-text="n.tipo_concepto"></span>
+                                                <span class="tipo-group__chip" x-show="n.tabla"
+                                                      x-text="'tabla ' + n.tabla"></span>
+                                                <span class="tipo-group__chip" x-show="n.uri"
+                                                      x-text="'uri'"
+                                                      :title="n.uri"></span>
+                                            </div>
+                                            <div class="tipo-group__actions">
+                                                <button type="button" class="btn-link small"
+                                                        @click.stop="abrirDetalleNodo(n, 'nodos-tipo')"
+                                                        title="Ver resumen detallado del nodo en un modal">
+                                                    → ver resumen
+                                                </button>
+                                                <button type="button" class="btn-link small"
+                                                        @click.stop="seleccionarNodoDesdeListado(n)"
+                                                        title="Ver el nodo en el grafo">
+                                                    → ver en grafo
+                                                </button>
+                                                <button type="button" class="btn-link small"
+                                                        x-show="(n.type === 'concept' || n.type === 'concept_related') && n.id.match(/^c\d+/)"
+                                                        @click.stop="verGrafoConceptual(n.id, n.label)"
+                                                        title="Explorar sub-ontología desde este concepto">
+                                                    → explorar sub-ontología
+                                                </button>
+                                                <button type="button" class="btn-link small"
+                                                        x-show="n.type === 'doc' && n.docId"
+                                                        @click.stop="abrirDrawer({id: n.docId, ruta: n.ruta, titulo: n.label}, null)"
+                                                        title="Ver detalle del documento">
+                                                    → ver documento
+                                                </button>
+                                            </div>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </details>
+                        </template>
+                    </div>
+
+                    <!-- Tab content: Resumen narrativo (data-rich, NO plantilla) -->
+                    <div class="travesia-tab-panel travesia-tab-panel--narrativa" role="tabpanel"
+                         x-show="travesiaTabActiva === 'narrativa'" x-cloak>
+                        <template x-if="travesiaResumen">
+                            <div class="resumen-storyboard">
+                                <header class="resumen-storyboard__head">
+                                    <p class="muted small">Esto es lo que pasó cuando hiciste tu pregunta:</p>
+                                    <p class="resumen-storyboard__pregunta" x-text="'«' + (travesiaResumen.pregunta || '') + '»'"></p>
+                                    <p class="muted small">
+                                        Tiempo total: <strong x-text="(travesiaResumen.msTotal/1000).toFixed(1) + ' s'"></strong>
+                                        en <strong x-text="travesiaResumen.pasos.length"></strong> pasos.
+                                    </p>
+                                </header>
+
+                                <ol class="resumen-storyboard__pasos">
+                                    <template x-for="p in travesiaResumen.pasos" :key="p.num">
+                                        <li class="resumen-paso" :class="'resumen-paso--' + p.tipo">
+                                            <div class="resumen-paso__head">
+                                                <span class="resumen-paso__num" x-text="p.num"></span>
+                                                <h4 class="resumen-paso__titulo" x-text="p.titulo"></h4>
+                                                <span class="resumen-paso__ms" x-show="p.ms" x-text="p.ms + ' ms'"></span>
+                                            </div>
+                                            <p class="resumen-paso__desc" x-text="p.descripcion"></p>
+                                            <ul class="resumen-paso__items" x-show="p.items.length > 0">
+                                                <template x-for="(it, ix) in p.items" :key="ix">
+                                                    <li class="resumen-paso__item"
+                                                        :class="{'is-tool': p.tipo === 'tool'}"
+                                                        :title="'Click → abrir detalle'">
+                                                        <div class="resumen-paso__item-row" @click="abrirDetalleNodo(it.nodo, p.tipo)">
+                                                            <span class="resumen-paso__item-badge"
+                                                                  x-show="it.nodo && it.nodo.type"
+                                                                  :class="'badge-tipo badge-tipo--' + (it.nodo ? it.nodo.type : '')"
+                                                                  x-text="_typeLabel(it.nodo ? it.nodo.type : '')"></span>
+                                                            <strong x-text="it.label"></strong>
+                                                            <small class="muted" x-show="it.sub" x-text="it.sub"></small>
+                                                            <em class="muted small" x-show="it.info" x-text="it.info"></em>
+                                                        </div>
+                                                        <!-- Response de la herramienta directamente en el storyboard -->
+                                                        <template x-if="p.tipo === 'tool' && it.nodo && it.nodo.result_preview">
+                                                            <details class="tool-result-inline" @click.stop>
+                                                                <summary>
+                                                                    ↳ Response (<span x-text="it.nodo.result_size_bytes + ' B · ' + (it.nodo.ms || 0) + ' ms'"></span>)
+                                                                </summary>
+                                                                <pre x-text="_sanitizeBackend(it.nodo.result_preview)"></pre>
+                                                                <div class="tool-result-inline__keys" x-show="(it.nodo.result_keys || []).length > 0">
+                                                                    <template x-for="k in it.nodo.result_keys" :key="k">
+                                                                        <code x-text="k"></code>
+                                                                    </template>
+                                                                </div>
+                                                            </details>
+                                                        </template>
+                                                        <template x-if="p.tipo === 'tool' && it.nodo && !it.nodo.result_preview">
+                                                            <p class="tool-result-inline__missing muted small">
+                                                                <em>Response no capturado (turno previo a la captura de tool results). Se mostrará en próximos turnos.</em>
+                                                            </p>
+                                                        </template>
+                                                    </li>
+                                                </template>
+                                            </ul>
+                                        </li>
+                                    </template>
+                                </ol>
+
+                                <p class="muted small resumen-storyboard__hint">
+                                    Click en cualquier item → abre detalle del nodo en un modal.
+                                </p>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Sub-grafo conceptual (Mejora 3) — ahora en modal full-screen, ver al final -->
+                </div>
+            </template>
+        </div>
+    </aside>
+
+    <!-- Modal: Comentario opcional para feedback parcial/incorrecto -->
+    <div class="modal-backdrop" x-show="feedbackPendiente" @click="cancelarFeedback()" x-transition.opacity x-cloak aria-hidden="true"></div>
+    <div class="modal-wrap" x-show="feedbackPendiente" x-cloak>
+        <div class="modal modal--feedback" @click.stop role="dialog" aria-labelledby="modal-feedback-title">
+            <header class="modal__head">
+                <h2 id="modal-feedback-title">
+                    <svg class="ico" x-show="feedbackPendiente?.veredicto === 'parcial'" aria-hidden="true"><use href="#ico-half"/></svg>
+                    <svg class="ico" x-show="feedbackPendiente?.veredicto === 'incorrecta'" aria-hidden="true"><use href="#ico-thumbs-down"/></svg>
+                    <span x-text="feedbackPendiente?.veredicto === 'parcial' ? 'Marcar como parcial' : 'Marcar como incorrecta'"></span>
+                </h2>
+                <button type="button" class="btn-icon" @click="cancelarFeedback()" aria-label="Cancelar">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </header>
+            <div class="modal__body">
+                <p class="muted small">¿Qué hubiera mejorado la respuesta? (opcional)</p>
+                <textarea x-model="feedbackComentario" rows="4" placeholder="Ej: la cita está al doc equivocado, el dato es de otra cuenca, falta unidad de medida…" class="feedback-comment"></textarea>
+                <details class="feedback-flow">
+                    <summary class="feedback-flow__head">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-help"/></svg>
+                        ¿Para qué se usa este feedback?
+                    </summary>
+                    <div class="feedback-flow__body">
+                        <p>
+                            Tu feedback se guarda en <code>custom.RespuestasFeedback</code> con:
+                            la pregunta, la respuesta generada, el documento entregado, los candidatos
+                            top-3 (cadena de tools invocadas), tiempos por fase, y tu comentario.
+                        </p>
+                        <p><strong>Cómo aporta:</strong></p>
+                        <ul>
+                            <li>Detecta tools con tasa alta de "incorrecta" → se ajusta el routing N1-N7</li>
+                            <li>Cuando hay <em>doc_esperado ≠ doc_entregado</em>, se re-rankean los embeddings</li>
+                            <li>El campo <em>categoria_error</em> se llena en revisión post-mortem (analista)</li>
+                            <li>Métricas agregadas se publican en Metabase (precisión por tool, drift, etc.)</li>
+                        </ul>
+                    </div>
+                </details>
+                <div class="modal__actions">
+                    <button type="button" class="btn-link small" @click="cancelarFeedback()">Cancelar</button>
+                    <button type="button" class="btn-primary" @click="confirmarFeedbackConComentario()">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-send"/></svg>
+                        Enviar feedback
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal full-screen: Sub-grafo conceptual (BFS sobre RelacionOntologia) -->
+    <div class="modal-backdrop" x-show="grafoConcOpen" @click="cerrarGrafoConceptual()" x-transition.opacity x-cloak aria-hidden="true"></div>
+    <div class="modal-wrap" x-show="grafoConcOpen" x-cloak>
+        <div class="modal modal--grafo" @click.stop role="dialog" aria-labelledby="modal-grafo-title">
+            <header class="modal__head">
+                <h2 id="modal-grafo-title">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-target"/></svg>
+                    Sub-ontología: <span x-text="grafoConcConceptoLabel"></span>
+                </h2>
+                <button type="button" class="btn-icon" @click="cerrarGrafoConceptual()" aria-label="Cerrar">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </header>
+            <div class="modal__body modal__body--grafo">
+                <div class="grafo-conc__loading" x-show="grafoConcCargando">
+                    <svg class="ico ico-spin" aria-hidden="true"><use href="#ico-spinner"/></svg>
+                    Construyendo BFS de relaciones…
+                </div>
+                <template x-if="!grafoConcCargando && grafoConcData?.motivo === 'ok'">
+                    <div class="grafo-conc__layout">
+                        <div class="grafo-conc__cy-wrap">
+                            <!-- Mini-toolbar para sub-grafo -->
+                            <div class="grafo-toolbar" role="toolbar" aria-label="Controles del sub-grafo">
+                                <label class="grafo-toolbar__search-wrap">
+                                    <span class="visually-hidden">Buscar nodo</span>
+                                    <input type="search" class="grafo-toolbar__search"
+                                           x-model="travesiaBusqueda"
+                                           @input.debounce.250ms="aplicarBusquedaTravesia()"
+                                           placeholder="Buscar concepto…">
+                                </label>
+                                <button type="button" class="grafo-toolbar__btn" @click="grafoFit()" title="Ajustar al viewport" aria-label="Ajustar">
+                                    <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/>
+                                    </svg>
+                                </button>
+                                <button type="button" class="grafo-toolbar__btn" @click="grafoZoom(1.25)" title="Acercar" aria-label="Acercar">+</button>
+                                <button type="button" class="grafo-toolbar__btn" @click="grafoZoom(0.8)" title="Alejar" aria-label="Alejar">−</button>
+                                <button type="button" class="grafo-toolbar__btn" @click="grafoReset()" title="Reset" aria-label="Reset">
+                                    <svg class="ico" aria-hidden="true"><use href="#ico-rerun"/></svg>
+                                </button>
+                                <button type="button" class="grafo-toolbar__btn" @click="grafoExportarPng()" title="Exportar PNG" aria-label="Exportar PNG">
+                                    <svg class="ico" aria-hidden="true"><use href="#ico-download"/></svg>
+                                </button>
+                            </div>
+                            <div id="cy-grafo-conc-container" class="grafo-conc__cy"></div>
+                            <!-- Resize handle entre cy y sidebar -->
+                            <div class="resize-handle resize-handle--vertical resize-handle--right"
+                                 @mousedown="iniciarResizeSidebar($event)"
+                                 x-show="!grafoConcSidebarColapsado"
+                                 role="separator" aria-orientation="vertical"
+                                 aria-label="Redimensionar panel"
+                                 title="Arrastra para redimensionar el panel"></div>
+                            <button type="button" class="grafo-conc__sidebar-toggle"
+                                    @click="grafoConcSidebarColapsado = !grafoConcSidebarColapsado; $nextTick(() => { if (_visGrafoConc) _visGrafoConc.fit({animation: {duration: 250}}); })"
+                                    :title="grafoConcSidebarColapsado ? 'Mostrar panel' : 'Ocultar panel'"
+                                    :aria-pressed="!grafoConcSidebarColapsado">
+                                <svg class="ico" x-show="!grafoConcSidebarColapsado" aria-hidden="true"><use href="#ico-chevron-right"/></svg>
+                                <svg class="ico" x-show="grafoConcSidebarColapsado" aria-hidden="true"><use href="#ico-chevron-left"/></svg>
+                            </button>
+                        </div>
+                        <aside class="grafo-conc__metricas" :class="{'is-collapsed': grafoConcSidebarColapsado}">
+                            <!-- Panel detalle del nodo clickeado (top del sidebar) -->
+                            <div class="nodo-detalle nodo-detalle--inline" x-show="grafoConcNodoSelect" x-transition.opacity x-cloak>
+                                <header class="nodo-detalle__head">
+                                    <span class="nodo-detalle__tipo"
+                                          :class="'nodo-detalle__tipo--' + (grafoConcNodoSelect?.type || '')"
+                                          x-text="_typeLabel(grafoConcNodoSelect?.type)"></span>
+                                    <button type="button" class="btn-icon btn-icon--small"
+                                            @click="grafoConcNodoSelect = null" aria-label="Cerrar detalle">
+                                        <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                                    </button>
+                                </header>
+                                <h4 class="nodo-detalle__label" x-text="grafoConcNodoSelect?.label"></h4>
+                                <p class="nodo-detalle__desc" x-show="grafoConcNodoSelect?.descripcion && grafoConcNodoSelect.descripcion.trim()"
+                                   x-text="grafoConcNodoSelect?.descripcion"></p>
+                                <p class="nodo-detalle__desc muted small"
+                                   x-show="!(grafoConcNodoSelect?.descripcion && grafoConcNodoSelect.descripcion.trim())">
+                                    Sin descripción asociada en la ontología.
+                                </p>
+                                <dl class="nodo-detalle__meta">
+                                    <div class="nodo-detalle__row">
+                                        <dt>ID interno</dt>
+                                        <dd class="mono small" x-text="grafoConcNodoSelect?.id"></dd>
+                                    </div>
+                                    <template x-if="typeof grafoConcNodoSelect?.level === 'number'">
+                                        <div class="nodo-detalle__row">
+                                            <dt>Profundidad BFS</dt>
+                                            <dd><span x-text="grafoConcNodoSelect.level"></span> hop(s)</dd>
+                                        </div>
+                                    </template>
+                                    <template x-if="grafoConcNodoSelect?.tipo_concepto">
+                                        <div class="nodo-detalle__row">
+                                            <dt>Tipo concepto</dt>
+                                            <dd x-text="grafoConcNodoSelect.tipo_concepto"></dd>
+                                        </div>
+                                    </template>
+                                    <template x-if="grafoConcNodoSelect?.tabla">
+                                        <div class="nodo-detalle__row">
+                                            <dt>Tabla glosario</dt>
+                                            <dd class="mono small" x-text="grafoConcNodoSelect.tabla"></dd>
+                                        </div>
+                                    </template>
+                                    <template x-if="grafoConcNodoSelect?.uri">
+                                        <div class="nodo-detalle__row">
+                                            <dt>URI</dt>
+                                            <dd class="mono small" x-text="grafoConcNodoSelect.uri"></dd>
+                                        </div>
+                                    </template>
+                                    <template x-if="grafoConcNodoSelect?.isRoot">
+                                        <div class="nodo-detalle__row">
+                                            <dt>Raíz BFS</dt>
+                                            <dd>Sí (este es el origen)</dd>
+                                        </div>
+                                    </template>
+                                </dl>
+                                <button type="button" class="btn-link small"
+                                        x-show="(grafoConcNodoSelect?.type === 'concept_related' || grafoConcNodoSelect?.type === 'concept_root') && /^c\d+/.test(grafoConcNodoSelect?.id || '')"
+                                        @click="verGrafoConceptual(grafoConcNodoSelect.id, grafoConcNodoSelect.label)">
+                                    → Re-rootear desde aquí
+                                </button>
+                            </div>
+
+                            <h3>Métricas</h3>
+                            <dl class="metricas-grid">
+                                <dt>Conceptos visitados</dt><dd x-text="grafoConcData.metricas?.totalConceptos"></dd>
+                                <dt>Relaciones</dt><dd x-text="grafoConcData.metricas?.totalRelaciones"></dd>
+                                <dt>Mapeo glosario</dt><dd x-text="grafoConcData.metricas?.totalGlosario"></dd>
+                                <dt>Profundidad</dt><dd x-text="grafoConcData.metricas?.depth"></dd>
+                            </dl>
+                            <p class="muted small" style="margin-top: var(--space-3)">
+                                <strong>Atajos:</strong><br>
+                                · Hover nodo → resalta vecinos<br>
+                                · Click → muestra detalle aquí<br>
+                                · Doble-click → re-rootear<br>
+                                · Scroll → zoom · Drag → mover
+                            </p>
+                        </aside>
+                    </div>
+                </template>
+                <p class="muted small" x-show="!grafoConcCargando && grafoConcData?.motivo && grafoConcData.motivo !== 'ok'">
+                    <span x-text="'No se pudo construir el sub-grafo (' + (grafoConcData?.motivo || '?') + ')'"></span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drawer: Historial de conversaciones -->
+    <div class="drawer-backdrop" x-show="historialOpen" @click="historialOpen = false" x-transition.opacity x-cloak aria-hidden="true"></div>
+    <aside class="drawer drawer--historial" :class="{'is-open': historialOpen}"
+           role="dialog" aria-labelledby="drawer-historial-title"
+           :aria-hidden="!historialOpen">
+        <header class="drawer__head">
+            <h2 id="drawer-historial-title">
+                <svg class="ico" aria-hidden="true"><use href="#ico-clock"/></svg>
+                Historial de conversaciones
+            </h2>
+            <button type="button" class="btn-icon" @click="historialOpen = false" aria-label="Cerrar historial">
+                <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+            </button>
+        </header>
+        <div class="drawer__body">
+            <div class="historial-actions">
+                <button type="button" class="btn-link small" @click="cargarHistorial()" :disabled="historialCargando">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-rerun"/></svg>
+                    Recargar
+                </button>
+                <button type="button" class="btn-link small"
+                        @click="toggleModoSeleccion()"
+                        :class="historialModoSeleccion ? 'is-active' : ''"
+                        title="Activar selección múltiple">
+                    <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                    <span x-text="historialModoSeleccion ? 'Cancelar selección' : 'Seleccionar'"></span>
+                </button>
+                <span class="muted small" x-show="!historialCargando && historialItems.length > 0 && !historialModoSeleccion"
+                      x-text="historialItems.length + ' conversacion' + (historialItems.length === 1 ? '' : 'es')"></span>
+                <span class="muted small" x-show="historialModoSeleccion"
+                      x-text="historialSeleccionadas.length + ' / ' + historialItems.length + ' seleccionadas'"></span>
+            </div>
+
+            <!-- Filtro por estado: Activas | Archivadas | Todas -->
+            <div class="historial-filtro" role="radiogroup" aria-label="Filtrar conversaciones">
+                <button type="button" class="historial-filtro__seg"
+                        :class="historialFiltro === 'activa' ? 'is-active' : ''"
+                        @click="cambiarFiltroHistorial('activa')">Activas</button>
+                <button type="button" class="historial-filtro__seg"
+                        :class="historialFiltro === 'archivada' ? 'is-active' : ''"
+                        @click="cambiarFiltroHistorial('archivada')">Archivadas</button>
+                <button type="button" class="historial-filtro__seg"
+                        :class="historialFiltro === 'todas' ? 'is-active' : ''"
+                        @click="cambiarFiltroHistorial('todas')">Todas</button>
+            </div>
+
+            <!-- Batch toolbar cuando hay selección -->
+            <div class="historial-batch" x-show="historialModoSeleccion && historialItems.length > 0" x-cloak>
+                <button type="button" class="btn-link small" @click="seleccionarTodas()">Seleccionar todas</button>
+                <button type="button" class="btn-link small" @click="limpiarSeleccion()" x-show="historialSeleccionadas.length > 0">Limpiar</button>
+                <!-- Acciones disponibles cambian según el filtro activo -->
+                <button type="button" class="btn-primary btn-tiny"
+                        x-show="historialFiltro === 'activa' && historialSeleccionadas.length > 0"
+                        @click="archivarSeleccionadas()">
+                    Archivar (<span x-text="historialSeleccionadas.length"></span>)
+                </button>
+                <button type="button" class="btn-secondary btn-tiny"
+                        x-show="historialFiltro === 'archivada' && historialSeleccionadas.length > 0"
+                        @click="desarchivarSeleccionadas()">
+                    Desarchivar (<span x-text="historialSeleccionadas.length"></span>)
+                </button>
+                <button type="button" class="btn-danger btn-tiny"
+                        x-show="historialFiltro === 'archivada' && historialSeleccionadas.length > 0"
+                        @click="eliminarSeleccionadasPermanente()">
+                    Eliminar permanente (<span x-text="historialSeleccionadas.length"></span>)
+                </button>
+            </div>
+
+            <div class="historial-loading" x-show="historialCargando">
+                <svg class="ico ico-spin" aria-hidden="true"><use href="#ico-spinner"/></svg>
+                Cargando…
+            </div>
+
+            <div class="historial-error" x-show="historialError && !historialCargando" x-text="historialError"></div>
+
+            <div class="historial-empty" x-show="!historialCargando && !historialError && historialItems.length === 0">
+                <svg class="ico" aria-hidden="true"><use href="#ico-doc"/></svg>
+                <p>Aún no tienes conversaciones guardadas. Las preguntas que envíes aparecerán aquí.</p>
+            </div>
+
+            <ul class="historial-list" x-show="!historialCargando && historialItems.length > 0">
+                <template x-for="it in historialItems" :key="it.conversacionId">
+                    <li class="historial-item"
+                        :class="{
+                            'is-active': it.conversacionId === conversacionId,
+                            'is-archivada': it.estado === 'ARCHIVADA',
+                            'is-selected': historialSeleccionadas.includes(it.conversacionId)
+                        }">
+                        <!-- Checkbox de selección (solo en modo selección) -->
+                        <label class="historial-item__checkbox" x-show="historialModoSeleccion" @click.stop>
+                            <input type="checkbox"
+                                   :checked="historialSeleccionadas.includes(it.conversacionId)"
+                                   @change="toggleSeleccionConv(it.conversacionId)">
+                        </label>
+                        <div class="historial-item__body"
+                             @click="historialModoSeleccion ? toggleSeleccionConv(it.conversacionId) : abrirConversacion(it.conversacionId)">
+                            <div class="historial-item__head">
+                                <span class="historial-item__pregunta" x-text="it.primeraPregunta"></span>
+                                <span class="historial-item__count badge" x-text="it.totalTurnos"></span>
+                            </div>
+                            <div class="historial-item__meta">
+                                <span class="historial-item__time" x-text="it.ultimoTurnoEn?.replace('T',' ')"></span>
+                                <span class="historial-item__tool" x-show="it.ultimaTool"
+                                      x-text="it.ultimaTool"></span>
+                                <span class="historial-item__badge-archivada" x-show="it.estado === 'ARCHIVADA'"
+                                      title="Archivada">archivada</span>
+                            </div>
+                        </div>
+                        <!-- Menu kebab: solo cuando NO está en modo selección.
+                             Flujo correcto: en ACTIVA solo Archivar. En ARCHIVADA: Desarchivar | Eliminar permanente. -->
+                        <div class="historial-item__menu" x-show="!historialModoSeleccion" @click.stop>
+                            <button type="button" class="btn-icon btn-icon--small"
+                                    @click="toggleMenuConv(it.conversacionId, $event)"
+                                    :aria-expanded="historialMenuOpen === it.conversacionId"
+                                    title="Acciones">
+                                <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
+                                    <circle cx="12" cy="5" r="1.6"/>
+                                    <circle cx="12" cy="12" r="1.6"/>
+                                    <circle cx="12" cy="19" r="1.6"/>
+                                </svg>
+                            </button>
+                            <div class="historial-item__dropdown" x-show="historialMenuOpen === it.conversacionId"
+                                 @click.outside="historialMenuOpen = null" x-transition.opacity x-cloak>
+                                <!-- ACTIVA: SOLO archivar -->
+                                <button type="button" class="historial-item__action"
+                                        x-show="it.estado !== 'ARCHIVADA'"
+                                        @click="archivarConversacion(it.conversacionId)">
+                                    <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                                        <rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>
+                                    </svg>
+                                    Archivar
+                                </button>
+                                <!-- ARCHIVADA: Desarchivar + Eliminar permanente -->
+                                <button type="button" class="historial-item__action"
+                                        x-show="it.estado === 'ARCHIVADA'"
+                                        @click="desarchivarConversacion(it.conversacionId)">
+                                    <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                                        <path d="M3 7v13h18V7M3 7l3-4h12l3 4M12 12v6M9 15l3-3 3 3"/>
+                                    </svg>
+                                    Desarchivar
+                                </button>
+                                <button type="button" class="historial-item__action historial-item__action--danger"
+                                        x-show="it.estado === 'ARCHIVADA'"
+                                        @click="eliminarConversacion(it.conversacionId, it.primeraPregunta)">
+                                    <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                                        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                    </svg>
+                                    Eliminar permanente
+                                </button>
+                            </div>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+        </div>
+    </aside>
+
+    <!-- Modal: Confirmacion (reemplaza window.confirm nativo) -->
+    <div class="modal-backdrop modal-backdrop--confirm" x-show="confirmModal.open"
+         @click="confirmarCancel()" x-transition.opacity x-cloak>
+        <div class="modal modal--confirm" :class="{'modal--peligroso': confirmModal.peligroso}"
+             @click.stop role="alertdialog" aria-labelledby="confirm-modal-title">
+            <header class="modal__head">
+                <h2 id="confirm-modal-title" x-text="confirmModal.titulo"></h2>
+                <button type="button" class="btn-icon" @click="confirmarCancel()" aria-label="Cancelar">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </header>
+            <div class="modal__body">
+                <p class="modal-confirm__mensaje" x-text="confirmModal.mensaje"></p>
+            </div>
+            <footer class="modal__foot modal-confirm__foot">
+                <button type="button" class="btn btn--ghost" @click="confirmarCancel()">Cancelar</button>
+                <button type="button"
+                        class="btn"
+                        :class="confirmModal.peligroso ? 'btn--danger' : 'btn--primary'"
+                        @click="confirmarOk()"
+                        x-text="confirmModal.etiquetaOk"
+                        x-init="$nextTick(() => $el.focus())"></button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Modal: Detalle de nodo (usado desde Resumen y Nodos por tipo) -->
+    <div class="modal-backdrop" x-show="nodoModal.open"
+         @click="cerrarDetalleNodo()" x-transition.opacity x-cloak>
+        <template x-if="nodoModal.open && nodoModal.nodo">
+            <div class="modal modal--nodo" @click.stop role="dialog" aria-labelledby="nodo-modal-title">
+                <header class="modal__head">
+                    <div class="modal-nodo__title-wrap">
+                        <span class="badge-tipo" :class="'badge-tipo--' + (nodoModal.nodo.type || '')"
+                              x-text="_typeLabel(nodoModal.nodo.type)"></span>
+                        <h2 id="nodo-modal-title" x-text="nodoModal.nodo.label || nodoModal.nodo.id"></h2>
+                    </div>
+                    <button type="button" class="btn-icon" @click="cerrarDetalleNodo()" aria-label="Cerrar">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                    </button>
+                </header>
+                <div class="modal__body modal-nodo__body">
+                    <!-- Descripcion / preview / tooltip — con markdown -->
+                    <div class="modal-nodo__desc"
+                         x-show="nodoModal.nodo.descripcion || nodoModal.nodo.tooltip || nodoModal.nodo.chunkPreview"
+                         x-html="_renderMarkdownInline(nodoModal.nodo.descripcion || nodoModal.nodo.tooltip || nodoModal.nodo.chunkPreview)"></div>
+
+                    <!-- Tool: result preview con markdown / json -->
+                    <template x-if="nodoModal.nodo.type === 'tool' && nodoModal.nodo.result_preview">
+                        <details class="modal-nodo__tool" open>
+                            <summary>
+                                Response de la herramienta
+                                (<span x-text="(nodoModal.nodo.result_size_bytes || 0) + ' B · ' + (nodoModal.nodo.ms || 0) + ' ms'"></span>)
+                            </summary>
+                            <pre x-text="_sanitizeBackend(nodoModal.nodo.result_preview)"></pre>
+                            <div class="tool-result-inline__keys" x-show="(nodoModal.nodo.result_keys || []).length > 0">
+                                <template x-for="k in (nodoModal.nodo.result_keys || [])" :key="k">
+                                    <code x-text="k"></code>
+                                </template>
+                            </div>
+                        </details>
+                    </template>
+
+                    <dl class="modal-nodo__meta"
+                        x-show="typeof nodoModal.nodo.confianza === 'number' || typeof nodoModal.nodo.score === 'number' || nodoModal.nodo.tipo_concepto || nodoModal.nodo.tabla || nodoModal.nodo.docId || nodoModal.nodo.ruta || nodoModal.nodo.uri || typeof nodoModal.nodo.iter === 'number' || nodoModal.nodo.args">
+                        <template x-if="typeof nodoModal.nodo.confianza === 'number'">
+                            <div class="nodo-detalle__row">
+                                <dt>Confianza</dt>
+                                <dd x-text="(nodoModal.nodo.confianza * 100).toFixed(0) + '%'"></dd>
+                            </div>
+                        </template>
+                        <template x-if="typeof nodoModal.nodo.score === 'number'">
+                            <div class="nodo-detalle__row">
+                                <dt>Score</dt>
+                                <dd x-text="nodoModal.nodo.score.toFixed(2)"></dd>
+                            </div>
+                        </template>
+                        <template x-if="nodoModal.nodo.tipo_concepto">
+                            <div class="nodo-detalle__row">
+                                <dt>Tipo concepto</dt>
+                                <dd x-text="nodoModal.nodo.tipo_concepto"></dd>
+                            </div>
+                        </template>
+                        <template x-if="nodoModal.nodo.tabla">
+                            <div class="nodo-detalle__row">
+                                <dt>Tabla glosario</dt>
+                                <dd class="mono small" x-text="nodoModal.nodo.tabla"></dd>
+                            </div>
+                        </template>
+                        <template x-if="nodoModal.nodo.docId">
+                            <div class="nodo-detalle__row">
+                                <dt>Documento</dt>
+                                <dd x-text="'id=' + nodoModal.nodo.docId"></dd>
+                            </div>
+                        </template>
+                        <template x-if="nodoModal.nodo.ruta">
+                            <div class="nodo-detalle__row">
+                                <dt>Ruta SMB</dt>
+                                <dd class="mono small" x-text="nodoModal.nodo.ruta"></dd>
+                            </div>
+                        </template>
+                        <template x-if="nodoModal.nodo.uri">
+                            <div class="nodo-detalle__row">
+                                <dt>URI</dt>
+                                <dd class="mono small" x-text="nodoModal.nodo.uri"></dd>
+                            </div>
+                        </template>
+                        <template x-if="typeof nodoModal.nodo.iter === 'number'">
+                            <div class="nodo-detalle__row">
+                                <dt>Iteración</dt>
+                                <dd x-text="nodoModal.nodo.iter"></dd>
+                            </div>
+                        </template>
+                        <template x-if="nodoModal.nodo.args">
+                            <div class="nodo-detalle__row">
+                                <dt>Argumentos</dt>
+                                <dd class="mono small"><pre x-text="JSON.stringify(nodoModal.nodo.args, null, 2)"></pre></dd>
+                            </div>
+                        </template>
+                    </dl>
+                </div>
+                <footer class="modal__foot modal-nodo__foot">
+                    <button type="button" class="btn btn--ghost"
+                            @click="cerrarDetalleNodo(); seleccionarNodoDesdeListado(nodoModal.nodo)">
+                        → Ver en grafo
+                    </button>
+                    <button type="button" class="btn btn--ghost"
+                            x-show="nodoModal.nodo && (nodoModal.nodo.type === 'concept' || nodoModal.nodo.type === 'concept_related') && /^c\d+/.test(nodoModal.nodo.id || '')"
+                            @click="cerrarDetalleNodo(); verGrafoConceptual(nodoModal.nodo.id, nodoModal.nodo.label)">
+                        → Explorar sub-ontología
+                    </button>
+                    <button type="button" class="btn btn--ghost"
+                            x-show="nodoModal.nodo && nodoModal.nodo.type === 'doc' && nodoModal.nodo.docId"
+                            @click="cerrarDetalleNodo(); abrirDrawer({id: nodoModal.nodo.docId, ruta: nodoModal.nodo.ruta, titulo: nodoModal.nodo.label}, null)">
+                        → Ver documento
+                    </button>
+                    <button type="button" class="btn btn--primary" @click="cerrarDetalleNodo()">Cerrar</button>
+                </footer>
+            </div>
+        </template>
+    </div>
+
+    <!-- Modal: Atajos teclado -->
+    <div class="modal-backdrop" x-show="abrirAyuda" @click="abrirAyuda = false" x-transition.opacity x-cloak>
+        <div class="modal" @click.stop role="dialog" aria-labelledby="modal-help-title">
+            <header class="modal__head">
+                <h2 id="modal-help-title">Atajos de teclado</h2>
+                <button type="button" class="btn-icon" @click="abrirAyuda = false" aria-label="Cerrar">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </header>
+            <div class="modal__body">
+                <dl class="kbd-list">
+                    <dt><kbd>Enter</kbd></dt><dd>Enviar pregunta</dd>
+                    <dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>Nueva línea sin enviar</dd>
+                    <dt><kbd>Esc</kbd></dt><dd>Cancelar request en curso · cerrar drawer/modal</dd>
+                    <dt><kbd>Ctrl</kbd>+<kbd>N</kbd></dt><dd>Nueva conversación</dd>
+                    <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Foco al input</dd>
+                    <dt><kbd>Ctrl</kbd>+<kbd>B</kbd></dt><dd>Mostrar/ocultar sidebar</dd>
+                    <dt><kbd>Ctrl</kbd>+<kbd>Q</kbd></dt><dd>Toggle modo batería QA</dd>
+                    <dt><kbd>?</kbd></dt><dd>Mostrar este modal</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Upload (placeholder) -->
+    <div class="modal-backdrop" x-show="abrirUpload" @click="abrirUpload = false" x-transition.opacity x-cloak>
+        <div class="modal" @click.stop role="dialog" aria-labelledby="modal-upload-title">
+            <header class="modal__head">
+                <h2 id="modal-upload-title">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-paperclip"/></svg>
+                    Adjuntar archivo
+                </h2>
+                <button type="button" class="btn-icon" @click="abrirUpload = false" aria-label="Cerrar">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </header>
+            <div class="modal__body">
+                <p class="muted small">
+                    Acepta <strong>PDF, JPG, PNG, WEBP, MP3, WAV</strong>. Hasta 20 MB.
+                    Los PDFs se procesan con Docling. Las imágenes con Vision Computacional (ministral-3:14b).
+                    El audio se transcribe con Whisper antes del envío.
+                </p>
+                <div class="upload-dropzone"
+                     :class="{'is-dragover': uploadDragover}"
+                     @dragover.prevent="uploadDragover = true"
+                     @dragleave="uploadDragover = false"
+                     @drop.prevent="uploadDragover = false; manejarArchivoDrop($event)">
+                    <input type="file" id="upload-file-input" class="visually-hidden"
+                           accept=".pdf,.jpg,.jpeg,.png,.webp,.mp3,.wav,.m4a"
+                           @change="manejarArchivoSeleccionado($event.target.files)">
+                    <label for="upload-file-input" class="upload-dropzone__label">
+                        <svg class="ico ico-lg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                        </svg>
+                        <strong>Click para elegir</strong> o arrastra el archivo aquí
+                    </label>
+                </div>
+                <div class="upload-attached" x-show="adjuntoActual" x-cloak>
+                    <div class="upload-attached__head">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-paperclip"/></svg>
+                        <strong x-text="adjuntoActual?.nombre"></strong>
+                        <span class="muted small" x-text="(adjuntoActual?.tamanoMB || 0).toFixed(2) + ' MB · ' + (adjuntoActual?.tipo || '')"></span>
+                        <button type="button" class="btn-icon btn-icon--small" @click="adjuntoActual = null" title="Quitar">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                        </button>
+                    </div>
+                    <template x-if="adjuntoActual?.previewUrl">
+                        <img :src="adjuntoActual.previewUrl" class="upload-attached__preview" alt="Preview">
+                    </template>
+                </div>
+                <div class="modal__actions">
+                    <button type="button" class="btn-link small" @click="abrirUpload = false">Cancelar</button>
+                    <button type="button" class="btn-primary" @click="confirmarAdjunto()"
+                            :disabled="!adjuntoActual">
+                        <svg class="ico" aria-hidden="true"><use href="#ico-check"/></svg>
+                        Adjuntar a la pregunta
+                    </button>
+                </div>
+                <p class="muted small" style="margin-top: var(--space-3);">
+                    <strong>Pipeline activo</strong>: el archivo se adjunta a la próxima pregunta y se envía al endpoint
+                    <code>IaCore.adjuntarArchivo</code>. Docling/Vision/Whisper ejecutan asíncronamente; el resultado se incorpora al contexto
+                    del agente para la respuesta. Si el procesamiento no completa antes del envío, la pregunta se responde sin el adjunto y
+                    aparece en el feed cuando esté listo.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast (notificaciones efímeras) -->
+    <div class="toast" x-show="toastMsg" x-transition x-cloak>
+        <svg class="ico" aria-hidden="true"><use href="#ico-check"/></svg>
+        <span x-text="toastMsg"></span>
+    </div>
+
+    <script src="lib/alpine.min.js" defer></script>
+    <script src="assets/data.js?v=20260510-16"></script>
+    <script src="assets/app.js?v=20260510-18"></script>
+</body>
+</html>
