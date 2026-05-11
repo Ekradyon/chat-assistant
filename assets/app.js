@@ -617,6 +617,10 @@ function chatAssistant() {
                     toolArgs: payload.toolArgs || null,
                     toolsInvocadas: payload.toolsInvocadas || [],
                     toolForzada: payload.toolForzada || false,
+                    bypassUsado: payload.bypassUsado || false,
+                    bypassFuente: payload.bypassFuente || null,
+                    bypassScore: payload.bypassScore || null,
+                    bypassRefId: payload.bypassRefId || null,
                     _pending: false,
                 });
                 this.ultimaLatenciaMs = (payload.telemetria && payload.telemetria.msTotal) || payload._wallMs;

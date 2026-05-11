@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Asistente Hidrocarburos · ANH</title>
     <meta name="description" content="Asistente conversacional Hidrocarburos ANH potenciado: progreso en tiempo real, telemetría, plantilla institucional, batería QA, cancelar, rerun.">
-    <link rel="stylesheet" href="assets/app.css?v=20260510-17">
+    <link rel="stylesheet" href="assets/app.css?v=20260511-01">
     <!-- vis-network local (paleta corporativa ANH, replica el ontology-viewer) -->
     <script src="lib/vis-network.min.js"></script>
     <!-- Marked.js para renderizar markdown del LLM (tablas, headings, bold, bullets) -->
@@ -264,12 +264,43 @@
                                     </template>
                                 </div>
 
+                                <!-- Badge BYPASS: respuesta directa del corpus / ontologia (Sprint 1) -->
+                                <template x-if="!t._pending && t.bypassUsado">
+                                    <div class="bypass-banner" :class="'bypass-banner--' + (t.bypassFuente || 'corpus')"
+                                         :title="'Score similitud: ' + (t.bypassScore || '?') + ' · ref id: ' + (t.bypassRefId || '?')">
+                                        <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                                        </svg>
+                                        <span class="bypass-banner__label">
+                                            <template x-if="t.bypassFuente === 'corpus_instruction'">
+                                                <strong>Respuesta directa del Corpus ANH</strong>
+                                            </template>
+                                            <template x-if="t.bypassFuente === 'gobierno_concepto'">
+                                                <strong>Respuesta directa de la Ontología Gobierno</strong>
+                                            </template>
+                                        </span>
+                                        <span class="bypass-banner__meta muted small">
+                                            similitud
+                                            <strong x-text="(t.bypassScore != null ? (t.bypassScore * 100).toFixed(1) + '%' : '—')"></strong>
+                                            · 0 tokens LLM
+                                        </span>
+                                    </div>
+                                </template>
+
                                 <!-- Telemetría -->
                                 <details class="telemetria" x-show="!t._pending && t.telemetria">
                                     <summary class="telemetria__head">
                                         <svg class="ico" aria-hidden="true"><use href="#ico-clock"/></svg>
                                         <span class="telemetria__tool">
-                                            <template x-if="t.toolInvocada">
+                                            <template x-if="t.bypassUsado">
+                                                <span><strong>bypass</strong>
+                                                    <span class="badge badge--success"
+                                                          x-text="t.bypassFuente === 'corpus_instruction' ? 'corpus' : 'gobierno'"
+                                                          :title="'similitud ' + ((t.bypassScore || 0) * 100).toFixed(1) + '%'"></span>
+                                                </span>
+                                            </template>
+                                            <template x-if="!t.bypassUsado && t.toolInvocada">
                                                 <span><strong x-text="t.toolInvocada"></strong>
                                                     <span class="badge" x-show="t.toolForzada" title="Tool forzada">forzada</span>
                                                     <span class="badge badge--info" x-show="t.toolsInvocadas && t.toolsInvocadas.length > 1"
@@ -277,7 +308,7 @@
                                                           :title="(t.toolsInvocadas || []).map(x => x.name).join(' → ')"></span>
                                                 </span>
                                             </template>
-                                            <template x-if="!t.toolInvocada">
+                                            <template x-if="!t.bypassUsado && !t.toolInvocada">
                                                 <span class="muted">sin tool</span>
                                             </template>
                                         </span>
@@ -1641,6 +1672,6 @@
 
     <script src="lib/alpine.min.js" defer></script>
     <script src="assets/data.js?v=20260510-16"></script>
-    <script src="assets/app.js?v=20260510-18"></script>
+    <script src="assets/app.js?v=20260511-01"></script>
 </body>
 </html>
