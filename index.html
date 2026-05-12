@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Asistente Hidrocarburos · ANH</title>
     <meta name="description" content="Asistente conversacional Hidrocarburos ANH potenciado: progreso en tiempo real, telemetría, plantilla institucional, batería QA, cancelar, rerun.">
-    <link rel="stylesheet" href="assets/app.css?v=20260511-06">
+    <link rel="stylesheet" href="assets/app.css?v=20260512-01">
     <!-- vis-network local (paleta corporativa ANH, replica el ontology-viewer) -->
     <script src="lib/vis-network.min.js"></script>
     <!-- Marked.js para renderizar markdown del LLM (tablas, headings, bold, bullets) -->
@@ -1621,7 +1621,7 @@
                 </div>
                 <footer class="modal__foot modal-nodo__foot">
                     <button type="button" class="btn btn--ghost"
-                            @click="cerrarDetalleNodo(); seleccionarNodoDesdeListado(nodoModal.nodo)">
+                            @click="(() => { const n = nodoModal.nodo; cerrarDetalleNodo(); abrirNodoFocusModal(n); })()">
                         → Ver en grafo
                     </button>
                     <button type="button" class="btn btn--ghost"
@@ -1634,10 +1634,37 @@
                             @click="cerrarDetalleNodo(); abrirDrawer({id: nodoModal.nodo.docId, ruta: nodoModal.nodo.ruta, titulo: nodoModal.nodo.label}, null)">
                         → Ver documento
                     </button>
-                    <button type="button" class="btn btn--primary" @click="cerrarDetalleNodo()">Cerrar</button>
+                    <button type="button" class="btn-primary" @click="cerrarDetalleNodo()">Cerrar</button>
                 </footer>
             </div>
         </template>
+    </div>
+
+    <!-- Modal: "Ver en grafo" — mini-grafo aislado enfocado en el nodo + 1-hop.
+         Independiente del drawer Travesía (no cambia tab). 2026-05-12 -->
+    <div class="modal-backdrop" x-show="nodoFocusModalOpen" @click="cerrarNodoFocusModal()"
+         x-transition.opacity x-cloak aria-hidden="true"></div>
+    <div class="modal-wrap" x-show="nodoFocusModalOpen" x-cloak>
+        <div class="modal modal--grafo" @click.stop role="dialog" aria-labelledby="modal-nodo-focus-title">
+            <header class="modal__head">
+                <h2 id="modal-nodo-focus-title">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-target"/></svg>
+                    Vista enfocada: <span x-text="nodoFocusModalNodo?.label || nodoFocusModalNodo?.id"></span>
+                </h2>
+                <button type="button" class="btn-icon" @click="cerrarNodoFocusModal()" aria-label="Cerrar">
+                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                </button>
+            </header>
+            <div class="modal__body" style="padding: 0; display: flex; flex-direction: column; gap: 0;">
+                <p class="muted small" style="padding: 12px 18px 0 18px; margin: 0;">
+                    Vecinos directos (1 salto) del nodo seleccionado en el grafo de razonamiento actual.
+                </p>
+                <div id="cy-nodo-focus-container" class="grafo-conc__cy" style="flex: 1; min-height: 480px;"></div>
+            </div>
+            <footer class="modal__foot">
+                <button type="button" class="btn-primary" @click="cerrarNodoFocusModal()">Cerrar</button>
+            </footer>
+        </div>
     </div>
 
     <!-- Modal: Atajos teclado -->
@@ -1767,6 +1794,6 @@
 
     <script src="lib/alpine.min.js" defer></script>
     <script src="assets/data.js?v=20260510-16"></script>
-    <script src="assets/app.js?v=20260511-06"></script>
+    <script src="assets/app.js?v=20260512-01"></script>
 </body>
 </html>

@@ -57,6 +57,13 @@ function chatAssistant() {
         grafoConcSidebarColapsado: false,  // sidebar derecho del modal sub-grafo
         // Sub-grafo conceptual (Mejora 3: explorar concepto desde travesia)
         grafoConcOpen: false,
+        // Modal "Ver en grafo" — mini-grafo aislado enfocado en un nodo + 1-hop.
+        // Independiente del drawer Travesía. Bug fix 2026-05-12: el usuario reportó
+        // múltiples veces que NO debe apuntar a los tabs del drawer.
+        nodoFocusModalOpen: false,
+        nodoFocusModalNodo: null,
+        nodoFocusModalData: null,
+        _visNodoFocus: null,
         grafoConcCargando: false,
         grafoConcData: null,
         grafoConcSvg: "",
@@ -115,6 +122,7 @@ function chatAssistant() {
                     if (this.loading) { this.cancelar(); e.preventDefault(); return; }
                     if (this.drawerCita) { this.drawerCita = null; e.preventDefault(); return; }
                     if (this.grafoConcOpen) { this.cerrarGrafoConceptual(); e.preventDefault(); return; }
+                    if (this.nodoFocusModalOpen) { this.cerrarNodoFocusModal(); e.preventDefault(); return; }
                     if (this.travesiaNodoSelect) { this.travesiaNodoSelect = null; e.preventDefault(); return; }
                     if (this.travesiaOpen) { this.cerrarTravesia(); e.preventDefault(); return; }
                     if (this.historialOpen) { this.historialOpen = false; e.preventDefault(); return; }
@@ -2128,27 +2136,108 @@ function chatAssistant() {
 
         // Acción al click en un nodo del tab "Nodos por tipo": cambia a tab Grafo,
         // setea la seleccion (panel detalle) y centra la camara en ese nodo.
+        // Abre un MODAL nuevo aislado con un mini-grafo enfocado en el nodo +
+        // sus vecinos 1-hop, calculado desde travesiaData (sin fetch backend).
+        // NO cambia de tab ni toca el drawer Travesía. Modal independiente.
+        // 2026-05-12: refactor reportado por el usuario varias veces.
         seleccionarNodoDesdeListado(nodo) {
-            this.travesiaTipoFiltro = "";
-            this.travesiaNodoSelect = nodo;
-            const wasGrafoTab = this.travesiaTabActiva === "grafo";
-            this.travesiaTabActiva = "grafo";
-            this.$nextTick(() => {
-                if (this._visTravesia) {
-                    try {
-                        this._visTravesia.selectNodes([nodo.id]);
-                        this._visTravesia.focus(nodo.id, {
-                            scale: 1.0,
-                            animation: { duration: 400, easingFunction: "easeInOutQuad" }
-                        });
-                        if (!wasGrafoTab) {
-                            // Tab cambio, re-fit no es necesario: focus ya posiciono
-                        }
-                    } catch (e) {
-                        // ignore: nodo no en el grafo o vis-network no listo
-                    }
-                }
+            if (!nodo) return;
+            this.abrirNodoFocusModal(nodo);
+        },
+
+        abrirNodoFocusModal(nodo) {
+            const data = this.travesiaData;
+            if (!data || !data.nodes) return;
+            // 1-hop neighbors: nodos conectados al focal via aristas
+            const focalId = nodo.id;
+            const vecinosIds = new Set([focalId]);
+            (data.edges || []).forEach(e => {
+                if (e.from === focalId) vecinosIds.add(e.to);
+                if (e.to === focalId) vecinosIds.add(e.from);
             });
+            const subNodes = (data.nodes || []).filter(n => vecinosIds.has(n.id));
+            const subEdges = (data.edges || []).filter(e =>
+                vecinosIds.has(e.from) && vecinosIds.has(e.to)
+            );
+            this.nodoFocusModalNodo = nodo;
+            this.nodoFocusModalData = { nodes: subNodes, edges: subEdges, focalId };
+            this.nodoFocusModalOpen = true;
+            this.$nextTick(() => {
+                // Doble nextTick + setTimeout para garantizar que el DOM del modal
+                // este montado antes de buscar el container.
+                setTimeout(() => {
+                    const c = document.getElementById("cy-nodo-focus-container");
+                    if (c && this.nodoFocusModalData) {
+                        this._renderNodoFocusVis(this.nodoFocusModalData, c, focalId);
+                    }
+                }, 80);
+            });
+        },
+
+        cerrarNodoFocusModal() {
+            this.nodoFocusModalOpen = false;
+            this.nodoFocusModalNodo = null;
+            this.nodoFocusModalData = null;
+            if (this._visNodoFocus) {
+                try { this._visNodoFocus.destroy(); } catch (e) {}
+                this._visNodoFocus = null;
+            }
+        },
+
+        _renderNodoFocusVis(grafo, containerEl, focalId) {
+            if (typeof vis === "undefined" || !vis.Network) return;
+            const isDark = this._temaEsOscuro();
+            const fontNodo = isDark ? "#f8fafc" : "#0f172a";
+            const edgeColor = isDark ? "#64748b" : "#94a3b8";
+            const aplicColor = (a) => {
+                const m = isDark
+                    ? { Gobierno:"#a78bfa", IaCore:"#4dd0e1", Hidrocarburos:"#fb923c", GeoVisorANH:"#86efac", GestorDocumental:"#94a3b8" }
+                    : { Gobierno:"#5e35b1", IaCore:"#00838F", Hidrocarburos:"#bf360c", GeoVisorANH:"#1b5e20", GestorDocumental:"#546e7a" };
+                return m[a] || (isDark ? "#94a3b8" : "#64748b");
+            };
+            const nodes = (grafo.nodes || []).map(n => {
+                const isFocal = n.id === focalId;
+                const borderCol = aplicColor(n.aplicativo);
+                return {
+                    id: n.id,
+                    label: (n.label || n.id).slice(0, 50),
+                    shape: "box",
+                    title: this._buildTooltipNode ? this._buildTooltipNode(n) : (n.tooltip || ""),
+                    color: {
+                        background: isDark ? (isFocal ? "#1e293b" : "#0f172a") : (isFocal ? "#f0fdfa" : "#ffffff"),
+                        border: borderCol,
+                        highlight: { background: isDark ? "#1e293b" : "#f0fdfa", border: borderCol }
+                    },
+                    borderWidth: isFocal ? 4 : 2,
+                    margin: 10,
+                    font: { color: fontNodo, size: isFocal ? 14 : 12, face: "system-ui" },
+                    _orig: n
+                };
+            });
+            const edges = (grafo.edges || []).map((e, i) => ({
+                id: "ne_" + i,
+                from: e.from, to: e.to,
+                label: e.label || "",
+                arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+                color: { color: edgeColor, highlight: edgeColor },
+                font: { size: 10, color: edgeColor, strokeWidth: 0, align: "middle" },
+                width: 1.2,
+                smooth: { enabled: true, type: "cubicBezier", forceDirection: "horizontal", roundness: 0.35 }
+            }));
+            const dsNodes = new vis.DataSet(nodes);
+            const dsEdges = new vis.DataSet(edges);
+            const options = {
+                interaction: { hover: true, dragNodes: true, zoomView: true, multiselect: false },
+                physics: { enabled: true, solver: "forceAtlas2Based", stabilization: { iterations: 80 } },
+                nodes: { shadow: false },
+                edges: { shadow: false }
+            };
+            const net = new vis.Network(containerEl, { nodes: dsNodes, edges: dsEdges }, options);
+            net.once("stabilizationIterationsDone", () => {
+                net.setOptions({ physics: { enabled: false } });
+                net.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+            });
+            this._visNodoFocus = net;
         },
 
         // Mini-toolbar del grafo: fit/zoom/reset/busqueda
@@ -2282,10 +2371,19 @@ function chatAssistant() {
                     return;
                 }
                 this.grafoConcData = payload;
-                this.$nextTick(() => {
+                // Bug fix 2026-05-12: el container existe en el DOM solo cuando
+                // el modal-wrap se monto. El $nextTick puede dispararse antes de
+                // que Alpine procese el x-show. Usamos setTimeout + retry para
+                // garantizar que el grafo si se renderice.
+                const tryRender = (attempt) => {
                     const c = document.getElementById("cy-grafo-conc-container");
-                    if (c) this._renderGrafoConcVis(payload, c);
-                });
+                    if (c) {
+                        this._renderGrafoConcVis(payload, c);
+                    } else if (attempt < 6) {
+                        setTimeout(() => tryRender(attempt + 1), 80);
+                    }
+                };
+                this.$nextTick(() => setTimeout(() => tryRender(0), 50));
             } catch (err) {
                 this.grafoConcData = {motivo: "error", err: err.message || String(err)};
             } finally {
