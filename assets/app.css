@@ -607,6 +607,30 @@ html.theme-dark .tool-level { background: var(--neutral-800); }
 .progreso-vivo__paso-item--llm_compose,
 .progreso-vivo__paso-item--llm_force_compose { color: var(--text-default); }
 .progreso-vivo__paso-item--tool_call { color: var(--text-strong); font-weight: var(--weight-medium); }
+/* Estados de fase: activa (con spinner) vs done (checkmark) */
+.progreso-vivo__paso-item.is-active {
+    background: rgba(0, 131, 143, 0.08);
+    border-left: 2px solid var(--color-primary);
+    padding-left: var(--space-2);
+    font-weight: var(--weight-medium);
+}
+.progreso-vivo__paso-item.is-done { opacity: 0.82; }
+.progreso-vivo__paso-item.is-done .ico { color: var(--color-success); }
+/* Resumen colapsable post-completado */
+.progreso-vivo > summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.progreso-vivo > summary::-webkit-details-marker { display: none; }
+.progreso-vivo > summary::before {
+    content: "▸";
+    margin-right: var(--space-2);
+    display: inline-block;
+    transition: transform var(--t-fast);
+    color: var(--text-muted);
+}
+.progreso-vivo[open] > summary::before { transform: rotate(90deg); }
 
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slidein { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
@@ -1575,6 +1599,32 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after {
     letter-spacing: 0.05em;
     font-weight: var(--weight-semibold);
 }
+.graph-tooltip__aplicativo {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: var(--weight-semibold);
+    border-radius: var(--radius-pill);
+    border: 1px solid;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.graph-tooltip__aplicativo--Gobierno         { background: #ede7f6; color: #4527a0; border-color: #b39ddb; }
+.graph-tooltip__aplicativo--IaCore           { background: #e0f7fa; color: #006064; border-color: #4dd0e1; }
+.graph-tooltip__aplicativo--Hidrocarburos    { background: #fff3e0; color: #bf360c; border-color: #ffab91; }
+.graph-tooltip__aplicativo--GeoVisorANH      { background: #e8f5e9; color: #1b5e20; border-color: #81c784; }
+.graph-tooltip__aplicativo--GestorDocumental { background: #eceff1; color: #37474f; border-color: #90a4ae; }
+.nodo-detalle__aplicativo {
+    display: inline-flex;
+    align-items: center;
+    margin-left: var(--space-2);
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: var(--weight-semibold);
+    border-radius: var(--radius-pill);
+    border: 1px solid;
+}
 .graph-tooltip__hint {
     color: var(--text-muted);
     font-size: var(--text-xs);
@@ -1665,6 +1715,61 @@ html.theme-dark .grafo-leyenda__chip--tesauro         .grafo-leyenda__dot { back
 html.theme-dark .grafo-leyenda__chip--tool            .grafo-leyenda__dot { background: #0f172a; border-color: #90caf9; }
 html.theme-dark .grafo-leyenda__chip--doc             .grafo-leyenda__dot { background: #0f172a; border-color: #90a4ae; }
 html.theme-dark .grafo-leyenda__chip--output          .grafo-leyenda__dot { background: #0f172a; border-color: #81c784; }
+
+/* Sprint 2: tipos nuevos (capas pre-LLM) */
+.grafo-leyenda__chip--bypass_corpus              .grafo-leyenda__dot { background: #d4f4dd; border-color: #1e7a3a; }
+.grafo-leyenda__chip--bypass_corpus_rechazado    .grafo-leyenda__dot { background: #fff0e6; border-color: #c75300; }
+.grafo-leyenda__chip--bypass_gobierno            .grafo-leyenda__dot { background: #d4ecf5; border-color: #00608a; }
+.grafo-leyenda__chip--bypass_gobierno_rechazado  .grafo-leyenda__dot { background: #fff0e6; border-color: #c75300; }
+.grafo-leyenda__chip--filtro_id_dominio          .grafo-leyenda__dot { background: #fef3c7; border-color: #b45309; }
+.grafo-leyenda__chip--grounding_card             .grafo-leyenda__dot { background: #ede7f6; border-color: #5e35b1; }
+
+html.theme-dark .grafo-leyenda__chip--bypass_corpus              .grafo-leyenda__dot { background: #0f172a; border-color: #4ade80; }
+html.theme-dark .grafo-leyenda__chip--bypass_corpus_rechazado    .grafo-leyenda__dot { background: #0f172a; border-color: #fb923c; }
+html.theme-dark .grafo-leyenda__chip--bypass_gobierno            .grafo-leyenda__dot { background: #0f172a; border-color: #60a5fa; }
+html.theme-dark .grafo-leyenda__chip--bypass_gobierno_rechazado  .grafo-leyenda__dot { background: #0f172a; border-color: #fb923c; }
+html.theme-dark .grafo-leyenda__chip--filtro_id_dominio          .grafo-leyenda__dot { background: #0f172a; border-color: #fbbf24; }
+html.theme-dark .grafo-leyenda__chip--grounding_card             .grafo-leyenda__dot { background: #0f172a; border-color: #a78bfa; }
+
+/* Chips de aplicativo (agrupacion ortogonal por componente backend) */
+.grafo-aplicativos {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 8px; padding: 6px 12px; margin-top: 4px;
+    border-top: 1px dashed var(--border-color, #e2e8f0);
+}
+.grafo-hint-intro {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 14px; margin: 0 0 10px 0;
+    background: rgba(0, 131, 143, 0.07);
+    border-left: 3px solid var(--color-primary, #00838F);
+    border-radius: var(--radius-md, 8px);
+    font-size: 12px; line-height: 1.5;
+    color: var(--text-default, #475569);
+}
+.grafo-hint-intro .ico { color: var(--color-primary); flex-shrink: 0; margin-top: 2px; }
+html.theme-dark .grafo-hint-intro { background: rgba(0, 131, 143, 0.15); color: var(--text-default); }
+.grafo-aplicativo-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; font-size: 12px; font-weight: 500;
+    border-radius: 9999px; border: 1px solid; line-height: 1.4;
+}
+.grafo-aplicativo-chip small {
+    font-size: 10px; font-weight: 600; opacity: 0.7;
+    background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 9999px;
+}
+.grafo-aplicativo-chip--Gobierno         { background: #ede7f6; color: #4527a0; border-color: #b39ddb; }
+.grafo-aplicativo-chip--IaCore           { background: #e0f7fa; color: #006064; border-color: #4dd0e1; }
+.grafo-aplicativo-chip--Hidrocarburos    { background: #fff3e0; color: #bf360c; border-color: #ffab91; }
+.grafo-aplicativo-chip--GeoVisorANH      { background: #e8f5e9; color: #1b5e20; border-color: #81c784; }
+.grafo-aplicativo-chip--GestorDocumental { background: #eceff1; color: #37474f; border-color: #90a4ae; }
+
+html.theme-dark .grafo-aplicativo-chip--Gobierno         { background: #2a1850; color: #c5b3ff; border-color: #6b4ec0; }
+html.theme-dark .grafo-aplicativo-chip--IaCore           { background: #003540; color: #80deea; border-color: #00838f; }
+html.theme-dark .grafo-aplicativo-chip--Hidrocarburos    { background: #4a2410; color: #ffab91; border-color: #c75c2c; }
+html.theme-dark .grafo-aplicativo-chip--GeoVisorANH      { background: #14361b; color: #a5d6a7; border-color: #4ca456; }
+html.theme-dark .grafo-aplicativo-chip--GestorDocumental { background: #1e2832; color: #b0bec5; border-color: #546e7a; }
+html.theme-dark .grafo-aplicativo-chip small             { background: rgba(255,255,255,0.1); }
+
 .grafo-leyenda__hint {
     margin-left: auto;
     font-size: 11px;
@@ -1746,6 +1851,10 @@ html.theme-dark .grafo-leyenda__chip--output          .grafo-leyenda__dot { back
 .resumen-paso--tool     .resumen-paso__num { background: #0d47a1; color: #fff; border-color: #002171; }
 .resumen-paso--doc      .resumen-paso__num { background: #546e7a; color: #fff; border-color: #37474f; }
 .resumen-paso--output   .resumen-paso__num { background: #2e7d32; color: #fff; border-color: #1b5e20; }
+/* Capas pre-LLM (bypass + filtro + grounding) */
+.resumen-paso--filtro_id_dominio .resumen-paso__num { background: #b45309; color: #fff; border-color: #92400e; }
+.resumen-paso--bypass            .resumen-paso__num { background: #047857; color: #fff; border-color: #065f46; }
+.resumen-paso--grounding_card    .resumen-paso__num { background: #5e35b1; color: #fff; border-color: #4527a0; }
 .nodo-detalle__label {
     font-size: var(--text-md);
     font-weight: var(--weight-semibold);
@@ -2222,6 +2331,10 @@ html.theme-dark .nodo-detalle {
 .resumen-paso--tool     .resumen-paso__num { background: #00838F; color: #fff; border-color: #006971; }
 .resumen-paso--doc      .resumen-paso__num { background: #475569; color: #fff; border-color: #334155; }
 .resumen-paso--output   .resumen-paso__num { background: #16a34a; color: #fff; border-color: #15803d; }
+/* Capas pre-LLM dark theme */
+.resumen-paso--filtro_id_dominio .resumen-paso__num { background: #f59e0b; color: #1e1b14; border-color: #d97706; }
+.resumen-paso--bypass            .resumen-paso__num { background: #10b981; color: #042f1f; border-color: #047857; }
+.resumen-paso--grounding_card    .resumen-paso__num { background: #a78bfa; color: #1e1245; border-color: #7c3aed; }
 .resumen-paso__titulo {
     font-size: var(--text-md);
     font-weight: var(--weight-semibold);
