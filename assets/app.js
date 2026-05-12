@@ -49,6 +49,7 @@ function chatAssistant() {
         travesiaMermaidSvg: "",   // SVG renderizado de Mermaid
         travesiaNodoSelect: null,  // nodo clickeado para panel detalle persistente
         travesiaTipoFiltro: "",    // string: tipo de nodo activo en filtro/leyenda
+        travesiaAplicativoFiltro: "",  // string: aplicativo backend activo en filtro
         travesiaTabActiva: "grafo",  // tab activa: grafo|metricas|nodos|narrativa
         travesiaBusqueda: "",      // input de busqueda local del grafo (filtro por label)
         travesiaLayout: "pipeline", // pipeline | vertical | radial | compacto
@@ -1129,33 +1130,69 @@ function chatAssistant() {
             }[aplic] || (aplic || "—"));
         },
 
-        // Glosario de términos técnicos (para tooltips de ayuda en la UI).
-        // El usuario pasa el cursor sobre un término y ve la definición en
-        // lenguaje claro. Se usa en panel de detalle, leyenda y tooltips de chip.
+        // Glosario de términos técnicos y funcionales (tooltips + modal ayuda).
+        // Dividido en dos categorías: "funcional" (cliente final, qué significa la
+        // capa para mi pregunta) y "técnico" (implementación, para QA/ops).
         _glosario(termino) {
-            const g = {
-                "score": "Puntaje de similitud entre 0 y 1. Mayor = match más fuerte.",
-                "umbral": "Valor mínimo de score requerido para que el match cuente. Si score < umbral, se rechaza.",
-                "confianza": "Probabilidad estimada de que el match sea correcto, expresada en porcentaje.",
-                "KNN": "K Nearest Neighbors — algoritmo que encuentra los K vectores más cercanos a una consulta en un espacio multidimensional.",
-                "bge-m3": "Modelo de embeddings multilingüe (BAAI/bge-m3, 1024 dimensiones) usado para vectorizar texto y comparar similitud semántica.",
-                "embedding": "Representación numérica (vector) de un texto que permite calcular similitud por distancia entre vectores.",
-                "trigram": "Comparación de cadenas por trigramas (subcadenas de 3 caracteres). Usado para búsqueda fuzzy resistente a errores tipográficos.",
-                "bypass": "Atajo que responde directamente desde el corpus institucional o la ontología sin invocar al LLM ni a herramientas. Reduce latencia y tokens.",
-                "grounding": "Inyección de contexto curado (definiciones, tablas, atributos) al prompt del LLM para guiar el routing y evitar alucinaciones (patrón KnowGPT).",
-                "tool / herramienta": "Función especializada que el LLM puede invocar para resolver una parte de la pregunta (lookup, agregación, RAG, geoespacial, etc.).",
-                "RAG": "Retrieval-Augmented Generation — patrón donde el LLM consulta un corpus de documentos antes de responder.",
-                "iter": "Número de iteración. El LLM puede llamar a múltiples herramientas en secuencia, cada una refina la respuesta.",
-                "tokens": "Unidades en que el LLM cuenta el texto (aprox. 4 caracteres por token en español).",
-                "Instruction ref": "Id de la fila en `IaCore.InstructionCache` (corpus de instrucciones curadas con respuestas pre-aprobadas).",
-                "ms": "Milisegundos de latencia.",
-                "URI": "Identificador único del concepto en la ontología institucional. Es un identificador semántico, NO una URL navegable.",
-                "Concepto": "Nodo en la ontología institucional ANH. Representa una entidad abstracta (Contrato, Pozo, Cuenca, etc.).",
-                "Entidad glosario": "Tabla del modelo de datos vinculada al concepto (ej. `Hidrocarburos.Contrato`).",
-                "Término tesauro": "Sinónimo o término preferido para un concepto, según el tesauro institucional.",
-                "Filtro identificador": "Capa que detecta si la pregunta menciona un identificador específico (nombre de contrato, código de pozo, etc.) para rechazar el bypass."
-            };
-            return g[termino] || null;
+            const item = (this._glosarioCompleto() || []).find(x => x.termino === termino);
+            return item ? item.desc : null;
+        },
+        // Lista plana de términos (compatible con código previo).
+        _glosarioTerminos() {
+            return (this._glosarioCompleto() || []).map(x => x.termino);
+        },
+        // Glosario estructurado: [{termino, categoria, desc}].
+        // Modelo de embeddings real verificado en repos/brain-vt-ocr-chunking/ocr_chunking.py L174:
+        //   DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large-instruct"
+        //   DEFAULT_RERANKER_MODEL  = "BAAI/bge-reranker-v2-m3"  (NO embedding, es reranker)
+        _glosarioCompleto() {
+            return [
+                // === FUNCIONAL (cliente final) ===
+                { categoria: "funcional", termino: "bypass",
+                  desc: "Atajo que responde directamente desde el corpus institucional curado o desde la ontología, sin consumir tokens del LLM. La respuesta es rápida (~0.5s) y verificada." },
+                { categoria: "funcional", termino: "grounding",
+                  desc: "Inyección al prompt del LLM de tarjetas con definiciones, tablas y atributos del modelo ANH, para que el LLM elija la herramienta correcta y evite respuestas inventadas." },
+                { categoria: "funcional", termino: "tool / herramienta",
+                  desc: "Función especializada que el LLM puede invocar para resolver una parte de la pregunta: lookup en tabla, agregación, búsqueda en documentos, geoespacial, serie temporal, imágenes." },
+                { categoria: "funcional", termino: "Concepto",
+                  desc: "Nodo en la ontología institucional ANH. Representa una entidad abstracta del dominio (Contrato, Pozo, Cuenca, etc.)." },
+                { categoria: "funcional", termino: "Entidad glosario",
+                  desc: "Tabla del modelo de datos vinculada a un concepto (ej. el concepto Contrato se vincula a la tabla Hidrocarburos.Contrato)." },
+                { categoria: "funcional", termino: "Término tesauro",
+                  desc: "Sinónimo o término preferido para un concepto, según el tesauro institucional." },
+                { categoria: "funcional", termino: "Filtro identificador",
+                  desc: "Capa que detecta si la pregunta menciona un identificador específico (número de contrato, código de pozo, nombre propio) para evitar respuestas definicionales genéricas." },
+                { categoria: "funcional", termino: "confianza",
+                  desc: "Probabilidad estimada de que el match entre tu pregunta y el concepto/instrucción sea correcto, expresada en porcentaje." },
+                { categoria: "funcional", termino: "iter",
+                  desc: "Número de iteración. El LLM puede llamar a varias herramientas en secuencia, cada una refina la respuesta de la anterior." },
+                { categoria: "funcional", termino: "ms",
+                  desc: "Milisegundos de latencia. 1000 ms = 1 segundo." },
+                { categoria: "funcional", termino: "tokens",
+                  desc: "Unidades en que el LLM cuenta el texto (aprox. 4 caracteres por token en español). Cada turno consume tokens de entrada (tu pregunta + contexto) y de salida (respuesta del LLM)." },
+
+                // === TÉCNICO (implementación, QA/ops) ===
+                { categoria: "tecnico", termino: "score",
+                  desc: "Puntaje de similitud entre 0 y 1 retornado por un algoritmo de matching (KNN vectorial, trigram, semántico). Mayor = match más fuerte." },
+                { categoria: "tecnico", termino: "umbral",
+                  desc: "Valor mínimo de score requerido para que el match cuente. Si score < umbral, se rechaza. Configurable en Operaciones.Parametros (bypass.umbral_corpus=0.92, bypass.umbral_gobierno=0.85)." },
+                { categoria: "tecnico", termino: "RAG",
+                  desc: "Retrieval-Augmented Generation — patrón donde el LLM consulta un corpus de documentos vectorizados antes de responder, citando los chunks relevantes." },
+                { categoria: "tecnico", termino: "KNN",
+                  desc: "K Nearest Neighbors — algoritmo que encuentra los K vectores más cercanos a una consulta en un espacio multidimensional. Implementado en PostgreSQL via pgvector + índice HNSW." },
+                { categoria: "tecnico", termino: "embedding",
+                  desc: "Representación numérica (vector de N dimensiones) de un texto que permite calcular similitud por distancia entre vectores." },
+                { categoria: "tecnico", termino: "multilingual-e5-large-instruct",
+                  desc: "Modelo de embeddings real usado en producción ANH (intfloat/multilingual-e5-large-instruct, 1024 dimensiones). Optimizado para español/inglés/multilingüe. Endpoint: /embed-query/process en anh-inf2.flows.ninja." },
+                { categoria: "tecnico", termino: "bge-reranker-v2-m3",
+                  desc: "Modelo de reranking usado para reordenar resultados top-K tras retrieval denso (BAAI/bge-reranker-v2-m3). NO es el modelo de embeddings; eso es e5-large-instruct." },
+                { categoria: "tecnico", termino: "trigram",
+                  desc: "Comparación de cadenas por trigramas (subcadenas de 3 caracteres). Usado en pg_trgm para búsqueda fuzzy resistente a errores tipográficos." },
+                { categoria: "tecnico", termino: "Instruction ref",
+                  desc: "Id de la fila en IaCore.InstructionCache que matcheó tu pregunta. Esa fila contiene una pregunta curada + respuesta institucional pre-aprobada." },
+                { categoria: "tecnico", termino: "URI",
+                  desc: "Identificador único del concepto en la ontología institucional (ej. http://anh.gov.co/ontologia/hidrocarburos/Bloque). Es un identificador semántico interno, NO una URL navegable." }
+            ];
         },
 
         // Construye un DOM Element rico para usar como `title:` de un nodo en
@@ -1269,13 +1306,10 @@ function chatAssistant() {
             const strokeCol = isDark ? "#0f172a" : "#ffffff";  // halo opuesto
             const edgeColor = isDark ? "#64748b" : "#94a3b8";
 
-            // PALETA McKINSEY-STYLE — 2026-05-10 v5:
-            // Diseño consultoría premium: minimalismo, neutralidad cromática, jerarquia por borde.
-            // Background: SIEMPRE blanco (light) / navy slate (dark) — sin "tarjetas de colores".
-            // Diferenciación: SOLO en el borde + un dot de acento (4px) en banda lateral via CSS.
-            // Tipografía: navy oscuro (light) / blanco (dark) — texto siempre legible.
-            // Bordes 2.5px en color corporativo del tipo (saturado pero no chillón).
-            // Cero sombras pesadas — máximo `rgba(0,0,0,0.05) y:1`.
+            // PALETA por TIPO de nodo (para casos sin aplicativo) — mantiene la diferenciación
+            // narrativa en pipeline (input -> concept -> glosario -> tool -> doc -> output).
+            // El color final del nodo da prioridad al APLIC_STYLE (mas abajo) si n.aplicativo
+            // esta definido, para que coincida con los chips de la barra "Aplicativos".
             const TYPE_STYLE = isDark ? {
                 input:           { bg: "#0f172a", border: "#5ec5e5", level: 0, fontColor: "#f8fafc" },
                 concept:         { bg: "#0f172a", border: "#00838F", level: 1, fontColor: "#f8fafc" },
@@ -1284,7 +1318,13 @@ function chatAssistant() {
                 tesauro:         { bg: "#0f172a", border: "#ce93d8", level: 2, fontColor: "#f8fafc" },
                 tool:            { bg: "#0f172a", border: "#90caf9", level: 3, fontColor: "#f8fafc" },
                 doc:             { bg: "#0f172a", border: "#90a4ae", level: 4, fontColor: "#f8fafc" },
-                output:          { bg: "#0f172a", border: "#81c784", level: 5, fontColor: "#f8fafc" }
+                output:          { bg: "#0f172a", border: "#81c784", level: 5, fontColor: "#f8fafc" },
+                bypass_corpus:           { bg: "#0f172a", border: "#4ade80", level: 0, fontColor: "#f8fafc" },
+                bypass_corpus_rechazado: { bg: "#0f172a", border: "#fb923c", level: 0, fontColor: "#f8fafc" },
+                bypass_gobierno:           { bg: "#0f172a", border: "#60a5fa", level: 0, fontColor: "#f8fafc" },
+                bypass_gobierno_rechazado: { bg: "#0f172a", border: "#fb923c", level: 0, fontColor: "#f8fafc" },
+                filtro_id_dominio:       { bg: "#0f172a", border: "#fbbf24", level: 0, fontColor: "#f8fafc" },
+                grounding_card:          { bg: "#0f172a", border: "#a78bfa", level: 1, fontColor: "#f8fafc" }
             } : {
                 input:           { bg: "#ffffff", border: "#1f70c1", level: 0, fontColor: "#003a5d" },
                 concept:         { bg: "#ffffff", border: "#00838F", level: 1, fontColor: "#003e44" },
@@ -1293,7 +1333,30 @@ function chatAssistant() {
                 tesauro:         { bg: "#ffffff", border: "#9c27b0", level: 2, fontColor: "#4a148c" },
                 tool:            { bg: "#ffffff", border: "#0d47a1", level: 3, fontColor: "#0d47a1" },
                 doc:             { bg: "#ffffff", border: "#546e7a", level: 4, fontColor: "#263238" },
-                output:          { bg: "#ffffff", border: "#2e7d32", level: 5, fontColor: "#1b5e20" }
+                output:          { bg: "#ffffff", border: "#2e7d32", level: 5, fontColor: "#1b5e20" },
+                bypass_corpus:           { bg: "#ffffff", border: "#047857", level: 0, fontColor: "#065f46" },
+                bypass_corpus_rechazado: { bg: "#ffffff", border: "#c75300", level: 0, fontColor: "#7c2d12" },
+                bypass_gobierno:           { bg: "#ffffff", border: "#0369a1", level: 0, fontColor: "#0c4a6e" },
+                bypass_gobierno_rechazado: { bg: "#ffffff", border: "#c75300", level: 0, fontColor: "#7c2d12" },
+                filtro_id_dominio:       { bg: "#ffffff", border: "#b45309", level: 0, fontColor: "#7c2d12" },
+                grounding_card:          { bg: "#ffffff", border: "#5e35b1", level: 1, fontColor: "#311b92" }
+            };
+
+            // PALETA por APLICATIVO — coincide con los chips de la barra "Aplicativos"
+            // Mejora 2026-05-11: usuario pidio que el color del nodo refleje el aplicativo
+            // backend (Gobierno/IaCore/Hidrocarburos/...) que produjo el dato.
+            const APLIC_STYLE = isDark ? {
+                Gobierno:          { border: "#a78bfa", fontColor: "#c5b3ff" },
+                IaCore:            { border: "#4dd0e1", fontColor: "#80deea" },
+                Hidrocarburos:     { border: "#fb923c", fontColor: "#ffab91" },
+                GeoVisorANH:       { border: "#86efac", fontColor: "#a5d6a7" },
+                GestorDocumental:  { border: "#94a3b8", fontColor: "#b0bec5" }
+            } : {
+                Gobierno:          { border: "#5e35b1", fontColor: "#311b92" },
+                IaCore:            { border: "#00838F", fontColor: "#003e44" },
+                Hidrocarburos:     { border: "#bf360c", fontColor: "#7c2d12" },
+                GeoVisorANH:       { border: "#1b5e20", fontColor: "#14532d" },
+                GestorDocumental:  { border: "#546e7a", fontColor: "#263238" }
             };
             // hilight (cuando selected): borde más oscuro y bg ligeramente teñido
             Object.keys(TYPE_STYLE).forEach(k => {
@@ -1309,7 +1372,10 @@ function chatAssistant() {
             const TYPE_LABEL_CORTO = {
                 input: "PREGUNTA", concept: "CONCEPTO", concept_related: "VECINO",
                 glosario: "GLOSARIO", tesauro: "TESAURO",
-                tool: "HERRAMIENTA", doc: "DOCUMENTO", output: "RESPUESTA"
+                tool: "HERRAMIENTA", doc: "DOCUMENTO", output: "RESPUESTA",
+                bypass_corpus: "BYPASS CORPUS", bypass_corpus_rechazado: "BYPASS CORPUS ✗",
+                bypass_gobierno: "BYPASS GOBIERNO", bypass_gobierno_rechazado: "BYPASS GOBIERNO ✗",
+                filtro_id_dominio: "FILTRO", grounding_card: "TARJETA"
             };
             const nodes = [];
             const seen = new Set();
@@ -1317,7 +1383,14 @@ function chatAssistant() {
             for (const n of (travesia.nodes || [])) {
                 if (seen.has(n.id)) continue;
                 seen.add(n.id);
-                const st = TYPE_STYLE[n.type] || fallback;
+                const stTipo = TYPE_STYLE[n.type] || fallback;
+                const stAplic = n.aplicativo ? APLIC_STYLE[n.aplicativo] : null;
+                // Aplicativo override del color de borde + fuente (Mejora 2026-05-11):
+                // los chips de la barra "Aplicativos" deben coincidir con el color
+                // del borde del nodo, asi el usuario ve qué backend produjo cada nodo.
+                const st = stAplic
+                    ? { ...stTipo, border: stAplic.border, fontColor: stAplic.fontColor, hilightBorder: stAplic.border }
+                    : stTipo;
                 const isFocal = n.type === "input" || n.type === "output";
                 const isTool = n.type === "tool";
                 const isDoc = n.type === "doc";
@@ -1609,6 +1682,48 @@ function chatAssistant() {
 
         // Aislar nodos de un tipo: dimear todo lo que no sea ese tipo. Disparado
         // por click en chip de leyenda. Vuelve a clickear para limpiar.
+        // Filtro por aplicativo backend (Gobierno/IaCore/Hidrocarburos/...).
+        // Mismo patron que toggleTravesiaTipoFiltro pero por campo `aplicativo`.
+        toggleTravesiaAplicativoFiltro(aplic) {
+            if (!this._visTravesia || !this._visTravesiaNodes) return;
+            const network = this._visTravesia;
+            const allNodes = this._visTravesiaNodes;
+            const allEdges = this._visTravesiaEdges || [];
+            if (this.travesiaAplicativoFiltro === aplic) {
+                // Toggle off: restaurar
+                this.travesiaAplicativoFiltro = "";
+                allNodes.forEach(n => network.body.data.nodes.update({ id: n.id, opacity: 1.0 }));
+                allEdges.forEach(e => network.body.data.edges.update({
+                    id: e.id, color: e._origColor || e.color
+                }));
+                return;
+            }
+            this.travesiaAplicativoFiltro = aplic;
+            const matchIds = new Set(allNodes.filter(n => n._orig && n._orig.aplicativo === aplic).map(n => n.id));
+            allNodes.forEach(n => {
+                network.body.data.nodes.update({ id: n.id, opacity: matchIds.has(n.id) ? 1.0 : 0.18 });
+            });
+            allEdges.forEach(e => {
+                if (!e._origColor) e._origColor = e.color;
+                const isPart = matchIds.has(e.from) || matchIds.has(e.to);
+                network.body.data.edges.update({
+                    id: e.id,
+                    color: isPart
+                        ? e._origColor
+                        : { color: this._temaEsOscuro() ? "#1f2937" : "#cbd5e1", opacity: 0.3 }
+                });
+            });
+        },
+
+        _refrescarTravesiaVis() {
+            if (!this._visTravesia || !this._visTravesiaNodes) return;
+            const network = this._visTravesia;
+            this._visTravesiaNodes.forEach(n => network.body.data.nodes.update({ id: n.id, opacity: 1.0 }));
+            (this._visTravesiaEdges || []).forEach(e => network.body.data.edges.update({
+                id: e.id, color: e._origColor || e.color
+            }));
+        },
+
         toggleTravesiaTipoFiltro(tipo) {
             if (!this._visTravesia || !this._visTravesiaNodes) return;
             const network = this._visTravesia;

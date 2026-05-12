@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Asistente Hidrocarburos · ANH</title>
     <meta name="description" content="Asistente conversacional Hidrocarburos ANH potenciado: progreso en tiempo real, telemetría, plantilla institucional, batería QA, cancelar, rerun.">
-    <link rel="stylesheet" href="assets/app.css?v=20260511-04">
+    <link rel="stylesheet" href="assets/app.css?v=20260511-06">
     <!-- vis-network local (paleta corporativa ANH, replica el ontology-viewer) -->
     <script src="lib/vis-network.min.js"></script>
     <!-- Marked.js para renderizar markdown del LLM (tablas, headings, bold, bullets) -->
@@ -292,9 +292,13 @@
                                             </template>
                                         </span>
                                         <span class="bypass-banner__meta muted small">
-                                            similitud
-                                            <strong x-text="(t.bypassScore != null ? (t.bypassScore * 100).toFixed(1) + '%' : '—')"></strong>
-                                            · 0 tokens LLM
+                                            <span :title="_glosario('confianza') + ' En este caso indica qué tan parecida es tu pregunta a una instrucción curada del corpus.'">
+                                                Confianza
+                                                <strong x-text="(t.bypassScore != null ? (t.bypassScore * 100).toFixed(1) + '%' : '—')"></strong>
+                                            </span>
+                                            <span class="bypass-banner__pill" title="Esta respuesta NO consumió tokens del modelo de lenguaje. Es un atajo curado del corpus institucional o de la ontología.">
+                                                ✓ sin gasto de LLM
+                                            </span>
                                         </span>
                                     </div>
                                 </template>
@@ -464,10 +468,11 @@
                             <span x-text="globalPasoActual || 'Procesando…'"></span>
                         </span>
                     </span>
-                    <button type="button" class="btn-secondary" @click="cancelar()" x-show="loading"
-                            title="Cancelar request en curso (Esc)">
+                    <button type="button" class="btn-detener" @click="cancelar()" x-show="loading"
+                            title="Cancelar la consulta en curso (Esc). La respuesta parcial se descarta.">
                         <svg class="ico" aria-hidden="true"><use href="#ico-stop"/></svg>
                         <span>Detener</span>
+                        <kbd class="btn-detener__kbd">Esc</kbd>
                     </button>
                     <button type="submit" class="btn-primary" :disabled="loading || !prompt.trim()" x-show="!loading">
                         <svg class="ico" aria-hidden="true"><use href="#ico-send"/></svg>
@@ -733,19 +738,28 @@
                         </div>
 
                         <!-- Agrupacion ortogonal por aplicativo: muestra de un vistazo cuales
-                             componentes del backend participaron en este razonamiento -->
-                        <div class="grafo-aplicativos" role="region" aria-label="Aplicativos participantes"
+                             componentes del backend participaron en este razonamiento.
+                             Click sobre un chip filtra el grafo a solo nodos de ese aplicativo. -->
+                        <div class="grafo-aplicativos" role="toolbar" aria-label="Filtro por aplicativo"
                              x-show="travesiaAplicativosPresentes.length > 0">
                             <span class="grafo-leyenda__title"
-                                  title="Cada nodo del grafo pertenece a un aplicativo del backend (Gobierno, IaCore, Hidrocarburos, etc.). Pasa el cursor sobre un chip para ver qué representa.">Aplicativos</span>
+                                  title="Cada nodo del grafo pertenece a un aplicativo del backend (Gobierno, IaCore, Hidrocarburos, etc.). Click sobre un chip para aislar esos nodos en el grafo.">Aplicativos</span>
                             <template x-for="ap in travesiaAplicativosPresentes" :key="ap.aplicativo">
-                                <span class="grafo-aplicativo-chip"
-                                      :class="'grafo-aplicativo-chip--' + ap.aplicativo"
-                                      :title="ap.label + ' — ' + ap.count + ' nodo(s) en este razonamiento'">
+                                <button type="button"
+                                        class="grafo-aplicativo-chip"
+                                        :class="['grafo-aplicativo-chip--' + ap.aplicativo, travesiaAplicativoFiltro === ap.aplicativo ? 'is-active' : '']"
+                                        @click="toggleTravesiaAplicativoFiltro(ap.aplicativo)"
+                                        :title="'Aislar nodos del aplicativo ' + ap.label + ' (' + ap.count + ' nodo(s))'">
                                     <span x-text="ap.label"></span>
                                     <small x-text="ap.count"></small>
-                                </span>
+                                </button>
                             </template>
+                            <button type="button" class="grafo-aplicativo-chip grafo-aplicativo-chip--reset"
+                                    x-show="travesiaAplicativoFiltro"
+                                    @click="travesiaAplicativoFiltro = ''; _refrescarTravesiaVis()"
+                                    title="Limpiar filtro de aplicativo">
+                                <span>✕ limpiar</span>
+                            </button>
                         </div>
 
                         <div class="travesia-grafo-wrap">
@@ -822,11 +836,12 @@
                             <header class="nodo-detalle__head">
                                 <span class="nodo-detalle__tipo"
                                       :class="'nodo-detalle__tipo--' + (travesiaNodoSelect?.type || '')"
-                                      x-text="_typeLabel(travesiaNodoSelect?.type)"></span>
+                                      x-text="_typeLabel(travesiaNodoSelect?.type)"
+                                      :title="'Tipo del nodo en el grafo de razonamiento: ' + _typeLabel(travesiaNodoSelect?.type)"></span>
                                 <span class="nodo-detalle__aplicativo" x-show="travesiaNodoSelect?.aplicativo"
                                       :class="'grafo-aplicativo-chip--' + (travesiaNodoSelect?.aplicativo || '')"
                                       x-text="_aplicativoLabel(travesiaNodoSelect?.aplicativo)"
-                                      :title="'Aplicativo backend: ' + _aplicativoLabel(travesiaNodoSelect?.aplicativo)"></span>
+                                      :title="'Aplicativo backend del que proviene este nodo: ' + _aplicativoLabel(travesiaNodoSelect?.aplicativo)"></span>
                                 <button type="button" class="btn-icon btn-icon--small"
                                         @click="travesiaNodoSelect = null" aria-label="Cerrar detalle">
                                     <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
@@ -1627,24 +1642,55 @@
 
     <!-- Modal: Atajos teclado -->
     <div class="modal-backdrop" x-show="abrirAyuda" @click="abrirAyuda = false" x-transition.opacity x-cloak>
-        <div class="modal" @click.stop role="dialog" aria-labelledby="modal-help-title">
+        <div class="modal modal--wide" @click.stop role="dialog" aria-labelledby="modal-help-title">
             <header class="modal__head">
-                <h2 id="modal-help-title">Atajos de teclado</h2>
+                <h2 id="modal-help-title">Ayuda</h2>
                 <button type="button" class="btn-icon" @click="abrirAyuda = false" aria-label="Cerrar">
                     <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
                 </button>
             </header>
             <div class="modal__body">
-                <dl class="kbd-list">
-                    <dt><kbd>Enter</kbd></dt><dd>Enviar pregunta</dd>
-                    <dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>Nueva línea sin enviar</dd>
-                    <dt><kbd>Esc</kbd></dt><dd>Cancelar request en curso · cerrar drawer/modal</dd>
-                    <dt><kbd>Ctrl</kbd>+<kbd>N</kbd></dt><dd>Nueva conversación</dd>
-                    <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Foco al input</dd>
-                    <dt><kbd>Ctrl</kbd>+<kbd>B</kbd></dt><dd>Mostrar/ocultar sidebar</dd>
-                    <dt><kbd>Ctrl</kbd>+<kbd>Q</kbd></dt><dd>Toggle modo batería QA</dd>
-                    <dt><kbd>?</kbd></dt><dd>Mostrar este modal</dd>
-                </dl>
+                <section class="ayuda-seccion">
+                    <h3>Atajos de teclado</h3>
+                    <dl class="kbd-list">
+                        <dt><kbd>Enter</kbd></dt><dd>Enviar pregunta</dd>
+                        <dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>Nueva línea sin enviar</dd>
+                        <dt><kbd>Esc</kbd></dt><dd>Cancelar request en curso · cerrar drawer/modal</dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>N</kbd></dt><dd>Nueva conversación</dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Foco al input</dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>B</kbd></dt><dd>Mostrar/ocultar sidebar</dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>Q</kbd></dt><dd>Toggle modo batería QA</dd>
+                        <dt><kbd>?</kbd></dt><dd>Mostrar este modal</dd>
+                    </dl>
+                </section>
+                <section class="ayuda-seccion">
+                    <h3>Glosario funcional <small class="muted">— qué significa para tu pregunta</small></h3>
+                    <p class="muted small">
+                        Términos que aparecen en la Travesía del razonamiento y en las respuestas.
+                    </p>
+                    <dl class="glosario-list">
+                        <template x-for="item in _glosarioCompleto().filter(x => x.categoria === 'funcional')" :key="item.termino">
+                            <div class="glosario-item glosario-item--funcional">
+                                <dt class="glosario-item__termino" x-text="item.termino"></dt>
+                                <dd class="glosario-item__desc" x-text="item.desc"></dd>
+                            </div>
+                        </template>
+                    </dl>
+                </section>
+                <section class="ayuda-seccion">
+                    <h3>Glosario técnico <small class="muted">— implementación (QA/ops)</small></h3>
+                    <p class="muted small">
+                        Detalles internos del agente: algoritmos, modelos, umbrales. Útil para diagnóstico.
+                    </p>
+                    <dl class="glosario-list">
+                        <template x-for="item in _glosarioCompleto().filter(x => x.categoria === 'tecnico')" :key="item.termino">
+                            <div class="glosario-item glosario-item--tecnico">
+                                <dt class="glosario-item__termino" x-text="item.termino"></dt>
+                                <dd class="glosario-item__desc" x-text="item.desc"></dd>
+                            </div>
+                        </template>
+                    </dl>
+                </section>
             </div>
         </div>
     </div>
@@ -1721,6 +1767,6 @@
 
     <script src="lib/alpine.min.js" defer></script>
     <script src="assets/data.js?v=20260510-16"></script>
-    <script src="assets/app.js?v=20260511-04"></script>
+    <script src="assets/app.js?v=20260511-06"></script>
 </body>
 </html>

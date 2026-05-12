@@ -1770,6 +1770,114 @@ html.theme-dark .grafo-aplicativo-chip--GeoVisorANH      { background: #14361b; 
 html.theme-dark .grafo-aplicativo-chip--GestorDocumental { background: #1e2832; color: #b0bec5; border-color: #546e7a; }
 html.theme-dark .grafo-aplicativo-chip small             { background: rgba(255,255,255,0.1); }
 
+/* Aplicativo chips como botones clickables (Mejora 9 — 2026-05-11) */
+button.grafo-aplicativo-chip { cursor: pointer; transition: var(--t-fast); transition-property: transform, box-shadow; font-family: inherit; }
+button.grafo-aplicativo-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-subtle); }
+button.grafo-aplicativo-chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+button.grafo-aplicativo-chip.is-active { box-shadow: 0 0 0 2px var(--color-primary), var(--shadow-soft); }
+.grafo-aplicativo-chip--reset { background: var(--bg-surface-2); color: var(--text-muted); border-color: var(--border-default); }
+html.theme-dark .grafo-aplicativo-chip--reset { background: #1e293b; color: #94a3b8; border-color: #334155; }
+
+/* Modal ayuda ampliada (Mejora 5 — glosario completo + atajos) */
+.modal--wide { max-width: 720px; }
+.ayuda-seccion { margin-bottom: var(--space-5); }
+.ayuda-seccion + .ayuda-seccion { padding-top: var(--space-5); border-top: 1px solid var(--border-default); }
+.ayuda-seccion h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    color: var(--text-strong);
+    margin: 0 0 var(--space-3) 0;
+}
+.glosario-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+    margin: 0;
+}
+.glosario-item {
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--color-primary);
+}
+.glosario-item__termino {
+    font-weight: var(--weight-semibold);
+    color: var(--text-strong);
+    font-size: var(--text-sm);
+    margin: 0 0 4px 0;
+    font-family: ui-monospace, Consolas, monospace;
+}
+.glosario-item__desc {
+    color: var(--text-default);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    margin: 0;
+}
+
+/* Boton Detener mejorado (2026-05-11) — color de alerta + kbd hint Esc */
+.btn-detener {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: 6px 14px;
+    background: linear-gradient(180deg, #fff5f5 0%, #fee2e2 100%);
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+    border-radius: var(--radius-md);
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: var(--t-base);
+    transition-property: background, transform, box-shadow;
+}
+.btn-detener:hover {
+    background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(220, 38, 38, 0.18);
+}
+.btn-detener:focus-visible { outline: 2px solid #dc2626; outline-offset: 2px; }
+.btn-detener:active { transform: translateY(1px); box-shadow: none; }
+.btn-detener .ico { color: #b91c1c; }
+.btn-detener__kbd {
+    margin-left: var(--space-1);
+    padding: 1px 6px;
+    font-size: 10px;
+    font-family: ui-monospace, Consolas, monospace;
+    background: rgba(220, 38, 38, 0.12);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-radius: var(--radius-sm);
+    color: #991b1b;
+}
+html.theme-dark .btn-detener {
+    background: linear-gradient(180deg, #2a1a1a 0%, #3a1f1f 100%);
+    color: #fca5a5;
+    border-color: #7f1d1d;
+}
+html.theme-dark .btn-detener:hover { background: linear-gradient(180deg, #3a1f1f 0%, #4a2424 100%); }
+html.theme-dark .btn-detener .ico { color: #fca5a5; }
+html.theme-dark .btn-detener__kbd { background: rgba(220, 38, 38, 0.2); color: #fca5a5; border-color: rgba(220, 38, 38, 0.4); }
+
+/* Glosario sub-categorias funcional/tecnico (2026-05-11) */
+.glosario-item--funcional { border-left-color: #00838F; }
+.glosario-item--tecnico   { border-left-color: #5e35b1; }
+html.theme-dark .glosario-item--funcional { border-left-color: #4dd0e1; }
+html.theme-dark .glosario-item--tecnico   { border-left-color: #a78bfa; }
+.ayuda-seccion h3 small { font-weight: var(--weight-regular); font-size: var(--text-sm); margin-left: var(--space-2); }
+
+/* Pill "sin gasto de LLM" en bypass-banner (Mejora 1 — 2026-05-11) */
+.bypass-banner__pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    margin-left: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    background: rgba(34, 197, 94, 0.12);
+    color: #15803d;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: var(--radius-pill);
+}
+html.theme-dark .bypass-banner__pill { background: rgba(74, 222, 128, 0.18); color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
+
 .grafo-leyenda__hint {
     margin-left: auto;
     font-size: 11px;
