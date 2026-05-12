@@ -63,7 +63,10 @@ function chatAssistant() {
         nodoFocusModalOpen: false,
         nodoFocusModalNodo: null,
         nodoFocusModalData: null,
+        nodoFocusModalNodoSelect: null,  // nodo clickeado → panel detalle
         _visNodoFocus: null,
+        _visNodoFocusNodes: null,
+        _visNodoFocusEdges: null,
         grafoConcCargando: false,
         grafoConcData: null,
         grafoConcSvg: "",
@@ -2160,6 +2163,7 @@ function chatAssistant() {
                 vecinosIds.has(e.from) && vecinosIds.has(e.to)
             );
             this.nodoFocusModalNodo = nodo;
+            this.nodoFocusModalNodoSelect = nodo;  // panel detalle visible desde t=0
             this.nodoFocusModalData = { nodes: subNodes, edges: subEdges, focalId };
             this.nodoFocusModalOpen = true;
             this.$nextTick(() => {
@@ -2178,66 +2182,168 @@ function chatAssistant() {
             this.nodoFocusModalOpen = false;
             this.nodoFocusModalNodo = null;
             this.nodoFocusModalData = null;
+            this.nodoFocusModalNodoSelect = null;
             if (this._visNodoFocus) {
                 try { this._visNodoFocus.destroy(); } catch (e) {}
                 this._visNodoFocus = null;
+                this._visNodoFocusNodes = null;
+                this._visNodoFocusEdges = null;
             }
         },
 
         _renderNodoFocusVis(grafo, containerEl, focalId) {
+            // Replica el patron visual de _renderGrafoConcVis (sub-ontologia)
+            // con paleta por APLICATIVO (Gobierno/IaCore/Hidrocarburos/...).
+            // 2026-05-12: refactor reportado por usuario para mantener consistencia.
             if (typeof vis === "undefined" || !vis.Network) return;
             const isDark = this._temaEsOscuro();
-            const fontNodo = isDark ? "#f8fafc" : "#0f172a";
-            const edgeColor = isDark ? "#64748b" : "#94a3b8";
-            const aplicColor = (a) => {
-                const m = isDark
-                    ? { Gobierno:"#a78bfa", IaCore:"#4dd0e1", Hidrocarburos:"#fb923c", GeoVisorANH:"#86efac", GestorDocumental:"#94a3b8" }
-                    : { Gobierno:"#5e35b1", IaCore:"#00838F", Hidrocarburos:"#bf360c", GeoVisorANH:"#1b5e20", GestorDocumental:"#546e7a" };
-                return m[a] || (isDark ? "#94a3b8" : "#64748b");
+            const fontEdge = isDark ? "#e2e8f0" : "#334155";
+
+            const APLIC_STYLE = isDark ? {
+                Gobierno:          { border: "#a78bfa", fontColor: "#c5b3ff" },
+                IaCore:            { border: "#4dd0e1", fontColor: "#80deea" },
+                Hidrocarburos:     { border: "#fb923c", fontColor: "#ffab91" },
+                GeoVisorANH:       { border: "#86efac", fontColor: "#a5d6a7" },
+                GestorDocumental:  { border: "#94a3b8", fontColor: "#b0bec5" }
+            } : {
+                Gobierno:          { border: "#5e35b1", fontColor: "#311b92" },
+                IaCore:            { border: "#00838F", fontColor: "#003e44" },
+                Hidrocarburos:     { border: "#bf360c", fontColor: "#7c2d12" },
+                GeoVisorANH:       { border: "#1b5e20", fontColor: "#14532d" },
+                GestorDocumental:  { border: "#546e7a", fontColor: "#263238" }
             };
-            const nodes = (grafo.nodes || []).map(n => {
+            const FALLBACK = isDark ? { border:"#64748b", fontColor:"#cbd5e1" } : { border:"#64748b", fontColor:"#334155" };
+
+            const nodes = [];
+            const seen = new Set();
+            for (const n of (grafo.nodes || [])) {
+                if (seen.has(n.id)) continue;
+                seen.add(n.id);
                 const isFocal = n.id === focalId;
-                const borderCol = aplicColor(n.aplicativo);
-                return {
+                const st = APLIC_STYLE[n.aplicativo] || FALLBACK;
+                nodes.push({
                     id: n.id,
-                    label: (n.label || n.id).slice(0, 50),
-                    shape: "box",
-                    title: this._buildTooltipNode ? this._buildTooltipNode(n) : (n.tooltip || ""),
+                    label: (n.label || n.id),
+                    title: this._buildTooltipNode(n),
                     color: {
-                        background: isDark ? (isFocal ? "#1e293b" : "#0f172a") : (isFocal ? "#f0fdfa" : "#ffffff"),
-                        border: borderCol,
-                        highlight: { background: isDark ? "#1e293b" : "#f0fdfa", border: borderCol }
+                        background: isDark ? "#0f172a" : "#ffffff",
+                        border: st.border,
+                        highlight: { background: isDark ? "#1e293b" : "#f8fafc", border: st.border }
                     },
-                    borderWidth: isFocal ? 4 : 2,
-                    margin: 10,
-                    font: { color: fontNodo, size: isFocal ? 14 : 12, face: "system-ui" },
+                    font: {
+                        color: st.fontColor,
+                        size: isFocal ? 14 : 12,
+                        face: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+                        multi: false, align: "center"
+                    },
+                    shape: "box",
+                    margin: { top: 10, right: 12, bottom: 10, left: 12 },
+                    widthConstraint: { minimum: 90, maximum: 220 },
+                    heightConstraint: { minimum: 32 },
+                    borderWidth: isFocal ? 3.5 : 2,
+                    borderWidthSelected: 4,
+                    shadow: { enabled: true, color: "rgba(0,0,0,0.08)", size: 5, x: 0, y: 2 },
+                    shapeProperties: { borderRadius: 8 },
                     _orig: n
-                };
-            });
-            const edges = (grafo.edges || []).map((e, i) => ({
-                id: "ne_" + i,
-                from: e.from, to: e.to,
-                label: e.label || "",
-                arrows: { to: { enabled: true, scaleFactor: 0.6 } },
-                color: { color: edgeColor, highlight: edgeColor },
-                font: { size: 10, color: edgeColor, strokeWidth: 0, align: "middle" },
-                width: 1.2,
-                smooth: { enabled: true, type: "cubicBezier", forceDirection: "horizontal", roundness: 0.35 }
-            }));
-            const dsNodes = new vis.DataSet(nodes);
-            const dsEdges = new vis.DataSet(edges);
+                });
+            }
+
+            const edges = [];
+            for (let i = 0; i < (grafo.edges || []).length; i++) {
+                const e = grafo.edges[i];
+                const isMapeo = e.label && /mapea|sinonimo|glosario/i.test(e.label);
+                const ec = isMapeo
+                    ? { color: "#fbbf24", dashes: true, width: 1.8 }
+                    : { color: "#0d9488", dashes: false, width: 1.5 };
+                edges.push({
+                    id: "nfe_" + i,
+                    from: e.from, to: e.to,
+                    label: e.label || "",
+                    arrows: "to",
+                    dashes: ec.dashes,
+                    color: { color: ec.color, highlight: "#FFD700" },
+                    font: {
+                        size: 11, color: fontEdge,
+                        background: isDark ? "rgba(15,23,42,0.85)" : "rgba(255,255,255,0.92)",
+                        strokeWidth: 0, align: "middle"
+                    },
+                    width: ec.width,
+                    smooth: { enabled: true, type: "cubicBezier", roundness: 0.4 }
+                });
+            }
+
+            const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
             const options = {
-                interaction: { hover: true, dragNodes: true, zoomView: true, multiselect: false },
-                physics: { enabled: true, solver: "forceAtlas2Based", stabilization: { iterations: 80 } },
-                nodes: { shadow: false },
-                edges: { shadow: false }
+                physics: { enabled: true, solver: "forceAtlas2Based", stabilization: { iterations: 100 } },
+                interaction: {
+                    hover: true, zoomView: true, dragView: true, dragNodes: true,
+                    keyboard: { enabled: true, speed: { x: 10, y: 10, zoom: 0.02 } },
+                    tooltipDelay: 120, hideEdgesOnDrag: false
+                },
+                edges: { width: 1.5 },
+                nodes: {
+                    borderWidth: 2,
+                    borderWidthSelected: 4,
+                    chosen: {
+                        node: function(values, id, selected, hovering) {
+                            if (selected) {
+                                values.borderWidth = 4;
+                                values.borderColor = "#FFD700";
+                                values.shadow = true;
+                                values.shadowColor = "rgba(255, 215, 0, 0.65)";
+                                values.shadowSize = 24;
+                            } else if (hovering) {
+                                values.borderWidth = 2.8;
+                            }
+                        }
+                    }
+                }
             };
-            const net = new vis.Network(containerEl, { nodes: dsNodes, edges: dsEdges }, options);
-            net.once("stabilizationIterationsDone", () => {
-                net.setOptions({ physics: { enabled: false } });
-                net.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+
+            if (this._visNodoFocus) {
+                try { this._visNodoFocus.destroy(); } catch (e) {}
+            }
+            const network = new vis.Network(containerEl, data, options);
+
+            // Estabilizar y congelar para layout limpio
+            network.once("stabilizationIterationsDone", () => {
+                network.setOptions({ physics: { enabled: false } });
+                network.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+                // Seleccionar el nodo focal inicialmente
+                try { network.selectNodes([focalId]); } catch (e) {}
             });
-            this._visNodoFocus = net;
+
+            // Click → setea panel detalle
+            network.on("click", (params) => {
+                this._ocultarTooltipVis && this._ocultarTooltipVis();
+                const nid = params.nodes[0];
+                if (!nid) { this.nodoFocusModalNodoSelect = null; return; }
+                const node = nodes.find(x => x.id === nid);
+                if (!node || !node._orig) return;
+                this.nodoFocusModalNodoSelect = node._orig;
+            });
+
+            // Hover 1-hop dimming (reusa el helper general)
+            network.on("hoverNode", (params) => {
+                this._aplicarHoverDimming(network, nodes, edges, params.node, true);
+            });
+            network.on("blurNode", () => {
+                this._aplicarHoverDimming(network, nodes, edges, null, false);
+            });
+
+            this._visNodoFocus = network;
+            this._visNodoFocusNodes = nodes;
+            this._visNodoFocusEdges = edges;
+            // Setear nodo focal como seleccionado por default
+            this.nodoFocusModalNodoSelect = grafo.nodes.find(n => n.id === focalId) || null;
+
+            // Re-fit defensivo despues del reflow del modal
+            setTimeout(() => {
+                try {
+                    network.fit({ animation: { duration: 200, easingFunction: "easeInOutQuad" } });
+                    network.redraw();
+                } catch (e) {}
+            }, 200);
         },
 
         // Mini-toolbar del grafo: fit/zoom/reset/busqueda
