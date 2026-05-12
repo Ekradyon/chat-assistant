@@ -538,8 +538,10 @@ function chatAssistant() {
                 toolArgs: null,
                 toolForzada: !!usedTool,
                 _pending: true,
-                _pasoActual: "Conectando con el agente…",
-                _progresoPasos: [],
+                _pasoActual: "Turno creado, preparando contexto",
+                _progresoPasos: [
+                    { fase: "iniciando", msg: "Turno enviado al agente", icon: "ico-clock" }
+                ],
                 _elapsedSec: 0,
                 _startTs: Date.now(),
             });
@@ -555,9 +557,9 @@ function chatAssistant() {
             this._pollAbortCtrl = new AbortController();
             const pollAbortSignal = this._pollAbortCtrl.signal;
             this._pollLoopActive = true;
-            // Backoff exponencial: 1.5s → 2.5s → 4s → 6s → 8s max
-            // Reduce ~60% el ruido de llamadas en el network panel durante turnos largos
-            const POLL_DELAYS = [1500, 1500, 2500, 2500, 4000, 4000, 6000, 8000];
+            // Primer poll mas rapido (300ms) para que las fases reales del backend
+            // aparezcan rapido en pantalla. Luego backoff: 1.5s -> 2.5s -> 4s -> 6s -> 8s max
+            const POLL_DELAYS = [300, 800, 1500, 2500, 2500, 4000, 4000, 6000, 8000];
             const pollLoop = async () => {
                 let attempt = 0;
                 while (this._pollLoopActive && !pollAbortSignal.aborted) {
@@ -1105,8 +1107,55 @@ function chatAssistant() {
                 tesauro: "Término tesauro",
                 tool: "Herramienta",
                 doc: "Documento",
-                output: "Respuesta"
+                output: "Respuesta",
+                // Nuevos tipos: capas pre-LLM (Sprint 1.5 bypass + Sprint 2 grounding)
+                bypass_corpus: "Bypass corpus ✓",
+                bypass_corpus_rechazado: "Bypass corpus ✗",
+                bypass_gobierno: "Bypass gobierno ✓",
+                bypass_gobierno_rechazado: "Bypass gobierno ✗",
+                filtro_id_dominio: "Filtro identificador",
+                grounding_card: "Tarjeta grounding"
             }[tipo] || (tipo || "—"));
+        },
+
+        // Etiqueta humana por aplicativo (agrupacion ortogonal a tipo)
+        _aplicativoLabel(aplic) {
+            return ({
+                Gobierno: "Gobierno (ontología)",
+                IaCore: "IaCore (orquestador)",
+                Hidrocarburos: "Hidrocarburos (datos)",
+                GeoVisorANH: "GeoVisor (mapas)",
+                GestorDocumental: "Documentos"
+            }[aplic] || (aplic || "—"));
+        },
+
+        // Glosario de términos técnicos (para tooltips de ayuda en la UI).
+        // El usuario pasa el cursor sobre un término y ve la definición en
+        // lenguaje claro. Se usa en panel de detalle, leyenda y tooltips de chip.
+        _glosario(termino) {
+            const g = {
+                "score": "Puntaje de similitud entre 0 y 1. Mayor = match más fuerte.",
+                "umbral": "Valor mínimo de score requerido para que el match cuente. Si score < umbral, se rechaza.",
+                "confianza": "Probabilidad estimada de que el match sea correcto, expresada en porcentaje.",
+                "KNN": "K Nearest Neighbors — algoritmo que encuentra los K vectores más cercanos a una consulta en un espacio multidimensional.",
+                "bge-m3": "Modelo de embeddings multilingüe (BAAI/bge-m3, 1024 dimensiones) usado para vectorizar texto y comparar similitud semántica.",
+                "embedding": "Representación numérica (vector) de un texto que permite calcular similitud por distancia entre vectores.",
+                "trigram": "Comparación de cadenas por trigramas (subcadenas de 3 caracteres). Usado para búsqueda fuzzy resistente a errores tipográficos.",
+                "bypass": "Atajo que responde directamente desde el corpus institucional o la ontología sin invocar al LLM ni a herramientas. Reduce latencia y tokens.",
+                "grounding": "Inyección de contexto curado (definiciones, tablas, atributos) al prompt del LLM para guiar el routing y evitar alucinaciones (patrón KnowGPT).",
+                "tool / herramienta": "Función especializada que el LLM puede invocar para resolver una parte de la pregunta (lookup, agregación, RAG, geoespacial, etc.).",
+                "RAG": "Retrieval-Augmented Generation — patrón donde el LLM consulta un corpus de documentos antes de responder.",
+                "iter": "Número de iteración. El LLM puede llamar a múltiples herramientas en secuencia, cada una refina la respuesta.",
+                "tokens": "Unidades en que el LLM cuenta el texto (aprox. 4 caracteres por token en español).",
+                "Instruction ref": "Id de la fila en `IaCore.InstructionCache` (corpus de instrucciones curadas con respuestas pre-aprobadas).",
+                "ms": "Milisegundos de latencia.",
+                "URI": "Identificador único del concepto en la ontología institucional. Es un identificador semántico, NO una URL navegable.",
+                "Concepto": "Nodo en la ontología institucional ANH. Representa una entidad abstracta (Contrato, Pozo, Cuenca, etc.).",
+                "Entidad glosario": "Tabla del modelo de datos vinculada al concepto (ej. `Hidrocarburos.Contrato`).",
+                "Término tesauro": "Sinónimo o término preferido para un concepto, según el tesauro institucional.",
+                "Filtro identificador": "Capa que detecta si la pregunta menciona un identificador específico (nombre de contrato, código de pozo, etc.) para rechazar el bypass."
+            };
+            return g[termino] || null;
         },
 
         // Construye un DOM Element rico para usar como `title:` de un nodo en
@@ -1124,11 +1173,21 @@ function chatAssistant() {
             tipoEl.textContent = this._typeLabel(n.type);
             el.appendChild(tipoEl);
 
+            // Bug 2 2026-05-11: mostrar aplicativo del nodo (Gobierno/IaCore/Hidrocarburos/etc.)
+            if (n.aplicativo) {
+                const apEl = document.createElement("div");
+                apEl.className = "graph-tooltip__aplicativo graph-tooltip__aplicativo--" + n.aplicativo;
+                apEl.textContent = this._aplicativoLabel(n.aplicativo);
+                el.appendChild(apEl);
+            }
+
             const desc = (n.descripcion || n.tooltip || "").trim();
             if (desc && desc !== n.label) {
                 const d = document.createElement("div");
                 d.className = "graph-tooltip__desc";
-                d.textContent = desc.slice(0, 280);
+                // Renderizar markdown (sanitizado con DOMPurify) en lugar de texto crudo.
+                // Bug 3 2026-05-11: textContent dejaba **RESPUESTA:** literal en pantalla.
+                d.innerHTML = this._renderMarkdownInline(desc.slice(0, 600));
                 el.appendChild(d);
             }
 
@@ -1609,12 +1668,42 @@ function chatAssistant() {
             return out;
         },
 
+        // Agrupa los nodos por aplicativo (Gobierno, IaCore, Hidrocarburos, etc.)
+        // — agrupacion ortogonal a tipo, util para entender que componentes del
+        // backend participan en el razonamiento.
+        get travesiaAplicativosPresentes() {
+            const data = this.travesiaData;
+            if (!data || !data.nodes) return [];
+            const counts = {};
+            data.nodes.forEach(n => {
+                const a = n.aplicativo || "Otro";
+                counts[a] = (counts[a] || 0) + 1;
+            });
+            const ORDER = ["IaCore", "Gobierno", "Hidrocarburos", "GeoVisorANH", "GestorDocumental", "Otro"];
+            const out = [];
+            ORDER.forEach(a => {
+                if (counts[a]) out.push({ aplicativo: a, label: this._aplicativoLabel(a), count: counts[a] });
+            });
+            Object.keys(counts).forEach(a => {
+                if (ORDER.includes(a)) return;
+                out.push({ aplicativo: a, label: this._aplicativoLabel(a), count: counts[a] });
+            });
+            return out;
+        },
+
         // Agrupa los nodos por tipo en el orden narrativo del pipeline
         get travesiaNodosPorTipo() {
             const data = this.travesiaData;
             if (!data || !data.nodes) return [];
             // Orden narrativo de izquierda a derecha del grafo
-            const ORDER = ["input", "concept", "concept_related", "glosario", "tesauro", "tool", "doc", "output"];
+            const ORDER = [
+                "input",
+                "filtro_id_dominio", "bypass_corpus", "bypass_corpus_rechazado",
+                "bypass_gobierno", "bypass_gobierno_rechazado",
+                "grounding_card",
+                "concept", "concept_related", "glosario", "tesauro",
+                "tool", "doc", "output"
+            ];
             const groups = {};
             data.nodes.forEach(n => {
                 if (!groups[n.type]) groups[n.type] = [];
@@ -1655,6 +1744,10 @@ function chatAssistant() {
             const tel = data.metricas || {};
 
             const inputNode = nodes.find(n => n.type === "input");
+            const filtroIdNode = nodes.find(n => n.type === "filtro_id_dominio");
+            const bypassCorpusNode = nodes.find(n => n.type === "bypass_corpus" || n.type === "bypass_corpus_rechazado");
+            const bypassGobNode = nodes.find(n => n.type === "bypass_gobierno" || n.type === "bypass_gobierno_rechazado");
+            const groundingCards = nodes.filter(n => n.type === "grounding_card");
             const conceptos = nodes.filter(n => n.type === "concept");
             const conceptosRel = nodes.filter(n => n.type === "concept_related");
             const glosario = nodes.filter(n => n.type === "glosario");
@@ -1666,10 +1759,11 @@ function chatAssistant() {
             const outputNode = nodes.find(n => n.type === "output");
 
             const pasos = [];
+            let pasoNum = 0;
 
             // Paso 1: Pregunta
             pasos.push({
-                num: 1,
+                num: ++pasoNum,
                 titulo: "Pregunta del usuario",
                 tipo: "input",
                 ms: null,
@@ -1677,10 +1771,73 @@ function chatAssistant() {
                 items: []
             });
 
-            // Paso 2: Extracción de conceptos
+            // Paso pre-LLM: Filtro identificador dominio (si aplica)
+            if (filtroIdNode) {
+                pasos.push({
+                    num: ++pasoNum,
+                    titulo: "Filtro de identificador del dominio",
+                    tipo: "filtro_id_dominio",
+                    ms: null,
+                    descripcion: filtroIdNode.tooltip || filtroIdNode.descripcion ||
+                        `Detecté el identificador específico "${filtroIdNode.match_tipo || ''}" en la pregunta. Por eso descarto el bypass y la enruto al LLM con tools.`,
+                    items: []
+                });
+            }
+
+            // Paso pre-LLM: intentos de bypass
+            if (bypassCorpusNode || bypassGobNode) {
+                const items = [];
+                if (bypassCorpusNode) {
+                    const matched = bypassCorpusNode.type === "bypass_corpus";
+                    items.push({
+                        label: matched ? "Bypass corpus_instruction ✓" : "Bypass corpus_instruction ✗",
+                        sub: typeof bypassCorpusNode.score === "number" ?
+                            `score ${bypassCorpusNode.score.toFixed(3)} · umbral ${bypassCorpusNode.umbral}` : null,
+                        info: bypassCorpusNode.documentName ? `documento: ${bypassCorpusNode.documentName}` : null,
+                        nodo: bypassCorpusNode
+                    });
+                }
+                if (bypassGobNode) {
+                    const matched = bypassGobNode.type === "bypass_gobierno";
+                    items.push({
+                        label: matched ? "Bypass gobierno_concepto ✓" : "Bypass gobierno_concepto ✗",
+                        sub: typeof bypassGobNode.score === "number" ?
+                            `score ${bypassGobNode.score.toFixed(3)} · umbral ${bypassGobNode.umbral}` : null,
+                        info: bypassGobNode.etiqueta ? `concepto: ${bypassGobNode.etiqueta}` : null,
+                        nodo: bypassGobNode
+                    });
+                }
+                pasos.push({
+                    num: ++pasoNum,
+                    titulo: "Intentos de bypass directo",
+                    tipo: "bypass",
+                    ms: null,
+                    descripcion: "Antes de invocar al LLM probé devolver una respuesta directa desde el corpus institucional (instrucciones curadas) y desde la ontología.",
+                    items
+                });
+            }
+
+            // Paso pre-LLM: grounding cards inyectadas
+            if (groundingCards.length) {
+                pasos.push({
+                    num: ++pasoNum,
+                    titulo: groundingCards.length === 1 ? "Tarjeta de grounding inyectada" : `${groundingCards.length} tarjetas de grounding inyectadas`,
+                    tipo: "grounding_card",
+                    ms: null,
+                    descripcion: `Inyecté ${groundingCards.length} tarjeta${groundingCards.length===1?"":"s"} del catálogo ontológico al system prompt del LLM (patrón KnowGPT). Cada tarjeta resume el concepto + tabla del modelo + atributos + términos del tesauro para que el LLM enrute a la tool correcta.`,
+                    items: groundingCards.map(g => ({
+                        label: g.label,
+                        sub: typeof g.confianza === "number" ? `confianza ${(g.confianza*100).toFixed(0)}%` : null,
+                        info: g.tipo_concepto || null,
+                        nodo: g
+                    }))
+                });
+            }
+
+            // Paso: Extracción de conceptos
             if (conceptos.length || conceptosRel.length) {
                 pasos.push({
-                    num: 2,
+                    num: ++pasoNum,
                     titulo: "Detección de conceptos en la ontología",
                     tipo: "concept",
                     ms: null,
@@ -1703,7 +1860,7 @@ function chatAssistant() {
                     ...tesauro.map(t => ({label: t.label, sub: "tesauro", info: t.tooltip, nodo: t}))
                 ];
                 pasos.push({
-                    num: 3,
+                    num: ++pasoNum,
                     titulo: "Resolución institucional",
                     tipo: "glosario",
                     ms: null,
@@ -1717,7 +1874,7 @@ function chatAssistant() {
             // Paso 4: Tool routing + ejecución
             if (tools.length) {
                 pasos.push({
-                    num: 4,
+                    num: ++pasoNum,
                     titulo: tools.length === 1 ? "Herramienta invocada" : `Cadena de ${tools.length} herramientas`,
                     tipo: "tool",
                     ms: tel.msTool || null,
@@ -1739,7 +1896,7 @@ function chatAssistant() {
             // Paso 5: Documentos consultados
             if (docs.length) {
                 pasos.push({
-                    num: 5,
+                    num: ++pasoNum,
                     titulo: "Documentos consultados del corpus",
                     tipo: "doc",
                     ms: null,
@@ -1755,7 +1912,7 @@ function chatAssistant() {
 
             // Paso 6: Composición de la respuesta
             pasos.push({
-                num: 6,
+                num: ++pasoNum,
                 titulo: "Composición de la respuesta",
                 tipo: "output",
                 ms: tel.msLlmTurn2 || null,

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Asistente Hidrocarburos · ANH</title>
     <meta name="description" content="Asistente conversacional Hidrocarburos ANH potenciado: progreso en tiempo real, telemetría, plantilla institucional, batería QA, cancelar, rerun.">
-    <link rel="stylesheet" href="assets/app.css?v=20260511-01">
+    <link rel="stylesheet" href="assets/app.css?v=20260511-04">
     <!-- vis-network local (paleta corporativa ANH, replica el ontology-viewer) -->
     <script src="lib/vis-network.min.js"></script>
     <!-- Marked.js para renderizar markdown del LLM (tablas, headings, bold, bullets) -->
@@ -237,22 +237,33 @@
 
                             <!-- Assistant -->
                             <div class="msg msg--assistant">
-                                <!-- Estado en vivo durante generación -->
-                                <div class="progreso-vivo" x-show="t._pending">
-                                    <div class="progreso-vivo__status">
-                                        <svg class="ico spinning" aria-hidden="true"><use href="#ico-spinner"/></svg>
-                                        <span class="progreso-vivo__paso" x-text="t._pasoActual || 'Iniciando…'"></span>
+                                <!-- Estado en vivo durante generación + persistencia post-completado -->
+                                <details class="progreso-vivo" :open="t._pending"
+                                         x-show="t._pending || (t._progresoPasos && t._progresoPasos.length > 0)">
+                                    <summary class="progreso-vivo__status">
+                                        <svg class="ico spinning" aria-hidden="true" x-show="t._pending"><use href="#ico-spinner"/></svg>
+                                        <svg class="ico" aria-hidden="true" x-show="!t._pending"><use href="#ico-check-circle"/></svg>
+                                        <span class="progreso-vivo__paso" x-show="t._pending" x-text="t._pasoActual || 'Iniciando…'"></span>
+                                        <span class="progreso-vivo__paso" x-show="!t._pending">
+                                            Procesamiento completado · <span x-text="(t._progresoPasos || []).length"></span> fases
+                                        </span>
                                         <span class="progreso-vivo__elapsed" x-text="t._elapsedSec ? '· ' + t._elapsedSec + 's' : ''"></span>
-                                    </div>
+                                    </summary>
                                     <ol class="progreso-vivo__pasos" x-show="(t._progresoPasos || []).length > 0">
                                         <template x-for="(p, pi) in (t._progresoPasos || [])" :key="pi">
-                                            <li class="progreso-vivo__paso-item" :class="'progreso-vivo__paso-item--' + p.fase">
-                                                <svg class="ico" aria-hidden="true"><use :href="'#' + (p.icon || 'ico-check')"/></svg>
+                                            <li class="progreso-vivo__paso-item"
+                                                :class="[
+                                                    'progreso-vivo__paso-item--' + p.fase,
+                                                    t._pending && pi === (t._progresoPasos.length - 1) ? 'is-active' : '',
+                                                    !t._pending || pi < (t._progresoPasos.length - 1) ? 'is-done' : ''
+                                                ]">
+                                                <svg class="ico" aria-hidden="true" x-show="!t._pending || pi < (t._progresoPasos.length - 1)"><use href="#ico-check"/></svg>
+                                                <svg class="ico spinning" aria-hidden="true" x-show="t._pending && pi === (t._progresoPasos.length - 1)"><use href="#ico-spinner"/></svg>
                                                 <span x-text="p.msg"></span>
                                             </li>
                                         </template>
                                     </ol>
-                                </div>
+                                </details>
 
                                 <!-- Respuesta final -->
                                 <div class="msg__bubble" x-show="!t._pending && t.bloques && t.bloques.length > 0">
@@ -697,9 +708,15 @@
                     <!-- Tab content: Grafo (default) -->
                     <div class="travesia-tab-panel travesia-tab-panel--grafo" role="tabpanel"
                          x-show="travesiaTabActiva === 'grafo'" x-cloak>
+                        <!-- Hint introductorio: explica que los nodos NO necesariamente fueron todos usados -->
+                        <div class="grafo-hint-intro" role="note">
+                            <svg class="ico" aria-hidden="true"><use href="#ico-info"/></svg>
+                            <span>El grafo muestra <strong>todos los elementos que el agente consideró</strong> al razonar tu pregunta. Las <strong>aristas</strong> indican qué se conectó con qué para llegar a la respuesta final. <strong>Click</strong> sobre un nodo para ver detalle.</span>
+                        </div>
+
                         <!-- Leyenda interactiva: chips por tipo, click filtra el grafo -->
                         <div class="grafo-leyenda" role="toolbar" aria-label="Leyenda y filtro por tipo">
-                            <span class="grafo-leyenda__title">Tipos</span>
+                            <span class="grafo-leyenda__title" :title="_glosario('Tipo de nodo del grafo de razonamiento')">Tipos</span>
                             <template x-for="lt in travesiaTiposPresentes" :key="lt.tipo">
                                 <button type="button"
                                         class="grafo-leyenda__chip"
@@ -713,6 +730,22 @@
                             <span class="grafo-leyenda__hint muted small">
                                 Click chip → aislar · Hover nodo → 1-hop · Click → detalle · Doble-click concept → drill-down
                             </span>
+                        </div>
+
+                        <!-- Agrupacion ortogonal por aplicativo: muestra de un vistazo cuales
+                             componentes del backend participaron en este razonamiento -->
+                        <div class="grafo-aplicativos" role="region" aria-label="Aplicativos participantes"
+                             x-show="travesiaAplicativosPresentes.length > 0">
+                            <span class="grafo-leyenda__title"
+                                  title="Cada nodo del grafo pertenece a un aplicativo del backend (Gobierno, IaCore, Hidrocarburos, etc.). Pasa el cursor sobre un chip para ver qué representa.">Aplicativos</span>
+                            <template x-for="ap in travesiaAplicativosPresentes" :key="ap.aplicativo">
+                                <span class="grafo-aplicativo-chip"
+                                      :class="'grafo-aplicativo-chip--' + ap.aplicativo"
+                                      :title="ap.label + ' — ' + ap.count + ' nodo(s) en este razonamiento'">
+                                    <span x-text="ap.label"></span>
+                                    <small x-text="ap.count"></small>
+                                </span>
+                            </template>
                         </div>
 
                         <div class="travesia-grafo-wrap">
@@ -790,6 +823,10 @@
                                 <span class="nodo-detalle__tipo"
                                       :class="'nodo-detalle__tipo--' + (travesiaNodoSelect?.type || '')"
                                       x-text="_typeLabel(travesiaNodoSelect?.type)"></span>
+                                <span class="nodo-detalle__aplicativo" x-show="travesiaNodoSelect?.aplicativo"
+                                      :class="'grafo-aplicativo-chip--' + (travesiaNodoSelect?.aplicativo || '')"
+                                      x-text="_aplicativoLabel(travesiaNodoSelect?.aplicativo)"
+                                      :title="'Aplicativo backend: ' + _aplicativoLabel(travesiaNodoSelect?.aplicativo)"></span>
                                 <button type="button" class="btn-icon btn-icon--small"
                                         @click="travesiaNodoSelect = null" aria-label="Cerrar detalle">
                                     <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
@@ -833,9 +870,9 @@
                                 </div>
                             </template>
 
-                            <p class="nodo-detalle__desc"
-                               x-show="travesiaNodoSelect?.type !== 'tool' && (travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip) && (travesiaNodoSelect.descripcion || travesiaNodoSelect.tooltip).trim()"
-                               x-text="travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip"></p>
+                            <div class="nodo-detalle__desc nodo-detalle__desc--md"
+                                 x-show="travesiaNodoSelect?.type !== 'tool' && (travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip) && (travesiaNodoSelect.descripcion || travesiaNodoSelect.tooltip).trim()"
+                                 x-html="_renderMarkdownInline(travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip)"></div>
                             <p class="nodo-detalle__desc muted small"
                                x-show="travesiaNodoSelect?.type !== 'tool' && (!(travesiaNodoSelect?.descripcion || travesiaNodoSelect?.tooltip) || !(travesiaNodoSelect.descripcion || travesiaNodoSelect.tooltip).trim())">
                                 Sin descripción adicional. Los metadatos disponibles se listan abajo.
@@ -847,14 +884,26 @@
                                 </div>
                                 <template x-if="typeof travesiaNodoSelect?.confianza === 'number'">
                                     <div class="nodo-detalle__row">
-                                        <dt>Confianza</dt>
+                                        <dt :title="_glosario('confianza')">Confianza</dt>
                                         <dd><span x-text="(travesiaNodoSelect.confianza * 100).toFixed(0) + '%'"></span></dd>
                                     </div>
                                 </template>
                                 <template x-if="typeof travesiaNodoSelect?.score === 'number'">
                                     <div class="nodo-detalle__row">
-                                        <dt>Score</dt>
+                                        <dt :title="_glosario('score')">Score</dt>
                                         <dd><span x-text="travesiaNodoSelect.score.toFixed(3)"></span></dd>
+                                    </div>
+                                </template>
+                                <template x-if="typeof travesiaNodoSelect?.umbral === 'number'">
+                                    <div class="nodo-detalle__row">
+                                        <dt :title="_glosario('umbral')">Umbral</dt>
+                                        <dd><span x-text="travesiaNodoSelect.umbral"></span></dd>
+                                    </div>
+                                </template>
+                                <template x-if="travesiaNodoSelect?.ms">
+                                    <div class="nodo-detalle__row">
+                                        <dt :title="_glosario('ms')">Latencia (ms)</dt>
+                                        <dd><span x-text="travesiaNodoSelect.ms"></span></dd>
                                     </div>
                                 </template>
                                 <template x-if="travesiaNodoSelect?.docId">
@@ -865,19 +914,19 @@
                                 </template>
                                 <template x-if="travesiaNodoSelect?.iter">
                                     <div class="nodo-detalle__row">
-                                        <dt>Iteración</dt>
+                                        <dt :title="_glosario('iter')">Iteración</dt>
                                         <dd x-text="travesiaNodoSelect.iter"></dd>
                                     </div>
                                 </template>
                                 <template x-if="travesiaNodoSelect?.tipo_concepto">
                                     <div class="nodo-detalle__row">
-                                        <dt>Tipo concepto</dt>
+                                        <dt :title="_glosario('Concepto')">Tipo concepto</dt>
                                         <dd x-text="travesiaNodoSelect.tipo_concepto"></dd>
                                     </div>
                                 </template>
                                 <template x-if="travesiaNodoSelect?.tabla">
                                     <div class="nodo-detalle__row">
-                                        <dt>Tabla glosario</dt>
+                                        <dt :title="_glosario('Entidad glosario')">Tabla glosario</dt>
                                         <dd class="mono small" x-text="travesiaNodoSelect.tabla"></dd>
                                     </div>
                                 </template>
@@ -957,8 +1006,8 @@
                                         <li class="tipo-group__item" @click="seleccionarNodoDesdeListado(n)"
                                             :title="'Click → ver detalle en el grafo'">
                                             <strong x-text="n.label"></strong>
-                                            <small class="muted" x-show="n.tooltip || n.descripcion"
-                                                   x-text="(n.tooltip || n.descripcion || '').substring(0, 180)"></small>
+                                            <small class="muted nodo-detalle__desc--md" x-show="n.tooltip || n.descripcion"
+                                                   x-html="_renderMarkdownInline((n.tooltip || n.descripcion || '').substring(0, 220))"></small>
                                             <div class="tipo-group__meta">
                                                 <span class="tipo-group__chip" x-show="typeof n.confianza === 'number'"
                                                       x-text="'conf ' + (n.confianza * 100).toFixed(0) + '%'"></span>
@@ -1029,7 +1078,7 @@
                                                 <h4 class="resumen-paso__titulo" x-text="p.titulo"></h4>
                                                 <span class="resumen-paso__ms" x-show="p.ms" x-text="p.ms + ' ms'"></span>
                                             </div>
-                                            <p class="resumen-paso__desc" x-text="p.descripcion"></p>
+                                            <p class="resumen-paso__desc nodo-detalle__desc--md" x-html="_renderMarkdownInline(p.descripcion)"></p>
                                             <ul class="resumen-paso__items" x-show="p.items.length > 0">
                                                 <template x-for="(it, ix) in p.items" :key="ix">
                                                     <li class="resumen-paso__item"
@@ -1204,8 +1253,8 @@
                                     </button>
                                 </header>
                                 <h4 class="nodo-detalle__label" x-text="grafoConcNodoSelect?.label"></h4>
-                                <p class="nodo-detalle__desc" x-show="grafoConcNodoSelect?.descripcion && grafoConcNodoSelect.descripcion.trim()"
-                                   x-text="grafoConcNodoSelect?.descripcion"></p>
+                                <div class="nodo-detalle__desc nodo-detalle__desc--md" x-show="grafoConcNodoSelect?.descripcion && grafoConcNodoSelect.descripcion.trim()"
+                                     x-html="_renderMarkdownInline(grafoConcNodoSelect?.descripcion)"></div>
                                 <p class="nodo-detalle__desc muted small"
                                    x-show="!(grafoConcNodoSelect?.descripcion && grafoConcNodoSelect.descripcion.trim())">
                                     Sin descripción asociada en la ontología.
@@ -1672,6 +1721,6 @@
 
     <script src="lib/alpine.min.js" defer></script>
     <script src="assets/data.js?v=20260510-16"></script>
-    <script src="assets/app.js?v=20260511-01"></script>
+    <script src="assets/app.js?v=20260511-04"></script>
 </body>
 </html>
