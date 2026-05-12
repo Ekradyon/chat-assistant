@@ -3011,6 +3011,7 @@ body.is-resizing * { cursor: ew-resize !important; user-select: none !important;
 .modal-nodo__title-wrap {
     display: flex;
     flex-direction: column;
+    align-items: flex-start; /* Evita que el badge-tipo se estire al 100% del ancho (Bug 2026-05-11) */
     gap: var(--space-2);
     flex: 1;
     min-width: 0;
