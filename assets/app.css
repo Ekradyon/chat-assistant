@@ -3188,6 +3188,69 @@ html.theme-dark .badge-tipo--output {
     border-color: #ba68c8;
 }
 
+/* Tipos nuevos: capas pre-LLM (Sprint 1.5 bypass + Sprint 2 grounding + filtro id_dominio).
+   Coordinados con los CSS de progreso/resumen-paso--*. — 2026-05-12 */
+.badge-tipo--bypass_corpus {
+    background: #d1fae5;
+    color: #064e3b;
+    border-color: #047857;
+}
+.badge-tipo--bypass_corpus_rechazado {
+    background: #ffedd5;
+    color: #7c2d12;
+    border-color: #c75300;
+}
+.badge-tipo--bypass_gobierno {
+    background: #dbeafe;
+    color: #0c4a6e;
+    border-color: #0369a1;
+}
+.badge-tipo--bypass_gobierno_rechazado {
+    background: #ffedd5;
+    color: #7c2d12;
+    border-color: #c75300;
+}
+.badge-tipo--filtro_id_dominio {
+    background: #fef3c7;
+    color: #78350f;
+    border-color: #b45309;
+}
+.badge-tipo--grounding_card {
+    background: #ede9fe;
+    color: #4c1d95;
+    border-color: #6d28d9;
+}
+html.theme-dark .badge-tipo--bypass_corpus {
+    background: rgba(4, 120, 87, 0.22);
+    color: #6ee7b7;
+    border-color: #34d399;
+}
+html.theme-dark .badge-tipo--bypass_corpus_rechazado {
+    background: rgba(199, 83, 0, 0.22);
+    color: #fdba74;
+    border-color: #fb923c;
+}
+html.theme-dark .badge-tipo--bypass_gobierno {
+    background: rgba(3, 105, 161, 0.22);
+    color: #93c5fd;
+    border-color: #60a5fa;
+}
+html.theme-dark .badge-tipo--bypass_gobierno_rechazado {
+    background: rgba(199, 83, 0, 0.22);
+    color: #fdba74;
+    border-color: #fb923c;
+}
+html.theme-dark .badge-tipo--filtro_id_dominio {
+    background: rgba(180, 83, 9, 0.22);
+    color: #fcd34d;
+    border-color: #fbbf24;
+}
+html.theme-dark .badge-tipo--grounding_card {
+    background: rgba(109, 40, 217, 0.22);
+    color: #c4b5fd;
+    border-color: #a78bfa;
+}
+
 /* Item del storyboard con badge coloreado al inicio */
 .resumen-paso__item-row {
     display: flex;

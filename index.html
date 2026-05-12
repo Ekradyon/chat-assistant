@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Asistente Hidrocarburos · ANH</title>
     <meta name="description" content="Asistente conversacional Hidrocarburos ANH potenciado: progreso en tiempo real, telemetría, plantilla institucional, batería QA, cancelar, rerun.">
-    <link rel="stylesheet" href="assets/app.css?v=20260512-01">
+    <link rel="stylesheet" href="assets/app.css?v=20260512-02">
     <!-- vis-network local (paleta corporativa ANH, replica el ontology-viewer) -->
     <script src="lib/vis-network.min.js"></script>
     <!-- Marked.js para renderizar markdown del LLM (tablas, headings, bold, bullets) -->
@@ -1641,6 +1641,7 @@
     </div>
 
     <!-- Modal: "Ver en grafo" — mini-grafo aislado enfocado en el nodo + 1-hop.
+         Layout 2-columnas (grafo + panel detalle) replica el patron de sub-ontologia.
          Independiente del drawer Travesía (no cambia tab). 2026-05-12 -->
     <div class="modal-backdrop" x-show="nodoFocusModalOpen" @click="cerrarNodoFocusModal()"
          x-transition.opacity x-cloak aria-hidden="true"></div>
@@ -1656,10 +1657,77 @@
                 </button>
             </header>
             <div class="modal__body" style="padding: 0; display: flex; flex-direction: column; gap: 0;">
-                <p class="muted small" style="padding: 12px 18px 0 18px; margin: 0;">
+                <p class="muted small" style="padding: 10px 16px 6px 16px; margin: 0; border-bottom: 1px solid var(--border-default);">
                     Vecinos directos (1 salto) del nodo seleccionado en el grafo de razonamiento actual.
+                    Click sobre un nodo para ver su detalle.
                 </p>
-                <div id="cy-nodo-focus-container" class="grafo-conc__cy" style="flex: 1; min-height: 480px;"></div>
+                <div class="grafo-conc__layout" style="min-height: 480px;">
+                    <div class="grafo-conc__cy-wrap">
+                        <div id="cy-nodo-focus-container" class="grafo-conc__cy"></div>
+                    </div>
+                    <aside class="grafo-conc__metricas">
+                        <!-- Panel detalle del nodo seleccionado (replica diseño grafoConc) -->
+                        <div class="nodo-detalle nodo-detalle--inline"
+                             x-show="nodoFocusModalNodoSelect" x-transition.opacity x-cloak>
+                            <header class="nodo-detalle__head">
+                                <span class="badge-tipo"
+                                      :class="'badge-tipo--' + (nodoFocusModalNodoSelect?.type || '')"
+                                      x-text="_typeLabel(nodoFocusModalNodoSelect?.type)"></span>
+                                <button type="button" class="btn-icon btn-icon--small"
+                                        @click="nodoFocusModalNodoSelect = null" aria-label="Cerrar detalle">
+                                    <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
+                                </button>
+                            </header>
+                            <h4 class="nodo-detalle__label" x-text="nodoFocusModalNodoSelect?.label"></h4>
+                            <p class="muted small" x-show="nodoFocusModalNodoSelect?.aplicativo">
+                                <strong>Aplicativo:</strong>
+                                <span x-text="_aplicativoLabel(nodoFocusModalNodoSelect?.aplicativo)"></span>
+                            </p>
+                            <div class="nodo-detalle__desc nodo-detalle__desc--md"
+                                 x-show="nodoFocusModalNodoSelect?.descripcion || nodoFocusModalNodoSelect?.tooltip"
+                                 x-html="_renderMarkdownInline(nodoFocusModalNodoSelect?.descripcion || nodoFocusModalNodoSelect?.tooltip)"></div>
+                            <dl class="nodo-detalle__meta">
+                                <div class="nodo-detalle__row">
+                                    <dt>ID interno</dt>
+                                    <dd class="mono small" x-text="nodoFocusModalNodoSelect?.id"></dd>
+                                </div>
+                                <template x-if="typeof nodoFocusModalNodoSelect?.confianza === 'number'">
+                                    <div class="nodo-detalle__row">
+                                        <dt :title="_glosario('confianza')">Confianza</dt>
+                                        <dd x-text="(nodoFocusModalNodoSelect.confianza * 100).toFixed(0) + '%'"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="typeof nodoFocusModalNodoSelect?.score === 'number'">
+                                    <div class="nodo-detalle__row">
+                                        <dt :title="_glosario('score')">Score</dt>
+                                        <dd x-text="nodoFocusModalNodoSelect.score.toFixed(3)"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="nodoFocusModalNodoSelect?.tipo_concepto">
+                                    <div class="nodo-detalle__row">
+                                        <dt :title="_glosario('Concepto')">Tipo concepto</dt>
+                                        <dd x-text="nodoFocusModalNodoSelect.tipo_concepto"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="nodoFocusModalNodoSelect?.tabla">
+                                    <div class="nodo-detalle__row">
+                                        <dt :title="_glosario('Entidad glosario')">Tabla glosario</dt>
+                                        <dd class="mono small" x-text="nodoFocusModalNodoSelect.tabla"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="nodoFocusModalNodoSelect?.uri">
+                                    <div class="nodo-detalle__row">
+                                        <dt :title="_glosario('URI')">URI</dt>
+                                        <dd class="mono small" x-text="nodoFocusModalNodoSelect.uri"></dd>
+                                    </div>
+                                </template>
+                            </dl>
+                        </div>
+                        <p class="muted small" x-show="!nodoFocusModalNodoSelect" style="padding: 16px;">
+                            Click sobre un nodo del grafo para ver su detalle aquí.
+                        </p>
+                    </aside>
+                </div>
             </div>
             <footer class="modal__foot">
                 <button type="button" class="btn-primary" @click="cerrarNodoFocusModal()">Cerrar</button>
@@ -1794,6 +1862,6 @@
 
     <script src="lib/alpine.min.js" defer></script>
     <script src="assets/data.js?v=20260510-16"></script>
-    <script src="assets/app.js?v=20260512-01"></script>
+    <script src="assets/app.js?v=20260512-02"></script>
 </body>
 </html>
