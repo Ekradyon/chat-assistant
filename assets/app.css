@@ -1952,6 +1952,13 @@ html.theme-dark .bypass-banner__pill { background: rgba(74, 222, 128, 0.18); col
 .nodo-detalle__tipo--tool           { background: #0d47a1; }
 .nodo-detalle__tipo--doc            { background: #546e7a; }
 .nodo-detalle__tipo--output         { background: #2e7d32; }
+/* Capas pre-LLM (Sprint 1.5/2). Usuario reporto 2026-05-12 que faltaban chips en Nodos por tipo. */
+.nodo-detalle__tipo--bypass_corpus             { background: #047857; }
+.nodo-detalle__tipo--bypass_corpus_rechazado   { background: #c75300; }
+.nodo-detalle__tipo--bypass_gobierno           { background: #0369a1; }
+.nodo-detalle__tipo--bypass_gobierno_rechazado { background: #c75300; }
+.nodo-detalle__tipo--filtro_id_dominio         { background: #b45309; }
+.nodo-detalle__tipo--grounding_card            { background: #6d28d9; }
 /* Resumen-paso storyboard num circles */
 .resumen-paso--input    .resumen-paso__num { background: #1f70c1; color: #fff; border-color: #0f5085; }
 .resumen-paso--concept  .resumen-paso__num { background: #00838F; color: #fff; border-color: #006064; }

@@ -64,6 +64,7 @@ function chatAssistant() {
         nodoFocusModalNodo: null,
         nodoFocusModalData: null,
         nodoFocusModalNodoSelect: null,  // nodo clickeado → panel detalle
+        nodoFocusSidebarColapsado: false,
         _visNodoFocus: null,
         _visNodoFocusNodes: null,
         _visNodoFocusEdges: null,
@@ -1272,6 +1273,172 @@ function chatAssistant() {
             return el;
         },
 
+        // Convex hull (Andrew's monotone chain, O(n log n)).
+        // Devuelve los puntos del polígono convexo en orden anti-horario.
+        // Input: array de [x, y]. Output: array de [x, y].
+        _convexHull(points) {
+            if (points.length <= 1) return points.slice();
+            const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+            const cross = (O, A, B) => (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]);
+            const lower = [];
+            for (const p of pts) {
+                while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+                    lower.pop();
+                }
+                lower.push(p);
+            }
+            const upper = [];
+            for (let i = pts.length - 1; i >= 0; i--) {
+                const p = pts[i];
+                while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+                    upper.pop();
+                }
+                upper.push(p);
+            }
+            upper.pop(); lower.pop();
+            return lower.concat(upper);
+        },
+
+        // Paletas de aplicativo (RGB) usadas por _drawAplicativoHulls.
+        _aplicPaleteHull(isDark) {
+            return isDark ? {
+                Gobierno:          { rgb: "167,139,250" },  // #a78bfa
+                IaCore:            { rgb: "77,208,225" },   // #4dd0e1
+                Hidrocarburos:     { rgb: "251,146,60" },   // #fb923c
+                GeoVisorANH:       { rgb: "134,239,172" },  // #86efac
+                GestorDocumental:  { rgb: "148,163,184" }   // #94a3b8
+            } : {
+                Gobierno:          { rgb: "94,53,177" },    // #5e35b1
+                IaCore:            { rgb: "0,131,143" },    // #00838F
+                Hidrocarburos:     { rgb: "191,54,12" },    // #bf360c
+                GeoVisorANH:       { rgb: "27,94,32" },     // #1b5e20
+                GestorDocumental:  { rgb: "84,110,122" }    // #546e7a
+            };
+        },
+
+        // Dibuja un convex hull traslúcido por cada APLICATIVO presente en los nodos.
+        // Se invoca desde `beforeDrawing` de vis-network para que el hull quede
+        // DETRÁS de los nodos. Doble lectura: borde del nodo = TIPO, halo = APLICATIVO.
+        //
+        // 2026-05-12 v2 — selectivo:
+        //   Si `aplicSeleccionado` está activo (usuario clickeó un chip de aplicativo
+        //   en la barra "Aplicativos"), el hull del aplicativo seleccionado se realza
+        //   (fill 22-28%, stroke 90%, label más grande) y los demás se atenúan
+        //   (fill 2-4%, stroke 12-18%, sin label). Sin filtro: visualización pareja.
+        _drawAplicativoHulls(ctx, network, nodes, aplicSeleccionado) {
+            if (!ctx || !network || !nodes || nodes.length === 0) return;
+            const isDark = this._temaEsOscuro();
+            const palette = this._aplicPaleteHull(isDark);
+            // Agrupar nodos por aplicativo
+            const grupos = {};
+            for (const n of nodes) {
+                const a = (n._orig && n._orig.aplicativo) || n.aplicativo;
+                if (!a) continue;
+                (grupos[a] = grupos[a] || []).push(n.id);
+            }
+            // Estilos según si hay aplicativo seleccionado y cuál es este
+            // (relación al filtro): "highlight" / "dim" / "neutral"
+            const estiloPara = (aplic) => {
+                const filtroActivo = !!aplicSeleccionado;
+                if (!filtroActivo) {
+                    return {
+                        fillAlpha: isDark ? 0.12 : 0.08,
+                        strokeAlpha: isDark ? 0.55 : 0.40,
+                        labelAlpha: isDark ? 0.95 : 0.85,
+                        lineWidth: 1.5,
+                        labelSize: 11,
+                        labelWeight: 600,
+                        drawLabel: true
+                    };
+                }
+                if (aplic === aplicSeleccionado) {
+                    // HIGHLIGHT — más opaco y con borde sólido grueso
+                    return {
+                        fillAlpha: isDark ? 0.28 : 0.22,
+                        strokeAlpha: isDark ? 0.95 : 0.90,
+                        labelAlpha: 1.0,
+                        lineWidth: 2.5,
+                        labelSize: 13,
+                        labelWeight: 700,
+                        drawLabel: true,
+                        dashed: false
+                    };
+                }
+                // DIM — casi invisible para que el seleccionado destaque
+                return {
+                    fillAlpha: isDark ? 0.04 : 0.025,
+                    strokeAlpha: isDark ? 0.18 : 0.12,
+                    labelAlpha: isDark ? 0.30 : 0.20,
+                    lineWidth: 1,
+                    labelSize: 10,
+                    labelWeight: 500,
+                    drawLabel: false,
+                    dashed: true
+                };
+            };
+            for (const aplic of Object.keys(grupos)) {
+                const ids = grupos[aplic];
+                const pal = palette[aplic];
+                if (!pal) continue;
+                const st = estiloPara(aplic);
+                // Posiciones canvas-space de los nodos
+                const positions = network.getPositions(ids);
+                const puntos = [];
+                for (const id of ids) {
+                    const p = positions[id];
+                    if (!p) continue;
+                    const r = 50;
+                    puntos.push([p.x - r, p.y - r]);
+                    puntos.push([p.x + r, p.y - r]);
+                    puntos.push([p.x - r, p.y + r]);
+                    puntos.push([p.x + r, p.y + r]);
+                }
+                if (puntos.length < 3) {
+                    if (puntos.length >= 1) {
+                        const cx = puntos.reduce((s, p) => s + p[0], 0) / puntos.length;
+                        const cy = puntos.reduce((s, p) => s + p[1], 0) / puntos.length;
+                        ctx.beginPath();
+                        ctx.fillStyle = `rgba(${pal.rgb}, ${st.fillAlpha})`;
+                        ctx.strokeStyle = `rgba(${pal.rgb}, ${st.strokeAlpha})`;
+                        ctx.lineWidth = st.lineWidth;
+                        ctx.arc(cx, cy, 70, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                    continue;
+                }
+                const hull = this._convexHull(puntos);
+                if (hull.length < 3) continue;
+                // Pintar polígono
+                ctx.beginPath();
+                ctx.moveTo(hull[0][0], hull[0][1]);
+                for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i][0], hull[i][1]);
+                ctx.closePath();
+                ctx.fillStyle = `rgba(${pal.rgb}, ${st.fillAlpha})`;
+                ctx.fill();
+                ctx.strokeStyle = `rgba(${pal.rgb}, ${st.strokeAlpha})`;
+                ctx.lineWidth = st.lineWidth;
+                // Dashed solo cuando NO hay filtro o el aplic está atenuado
+                if (st.dashed !== false) {
+                    ctx.setLineDash([8, 4]);
+                } else {
+                    ctx.setLineDash([]);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+                // Etiqueta del aplicativo (omitida si está atenuado para reducir ruido)
+                if (st.drawLabel) {
+                    const cx = hull.reduce((s, p) => s + p[0], 0) / hull.length;
+                    const minY = Math.min(...hull.map(p => p[1]));
+                    ctx.fillStyle = `rgba(${pal.rgb}, ${st.labelAlpha})`;
+                    ctx.font = `${st.labelWeight} ${st.labelSize}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "bottom";
+                    ctx.fillText(this._aplicativoLabel(aplic), cx, minY - 6);
+                }
+            }
+        },
+
         // Aplica dimming a nodos+edges fuera del 1-hop del foco (estilo
         // ontology-viewer). Llamado desde hoverNode; revertido en blurNode.
         _aplicarHoverDimming(network, allNodes, allEdges, focusId, on) {
@@ -1394,14 +1561,11 @@ function chatAssistant() {
             for (const n of (travesia.nodes || [])) {
                 if (seen.has(n.id)) continue;
                 seen.add(n.id);
-                const stTipo = TYPE_STYLE[n.type] || fallback;
-                const stAplic = n.aplicativo ? APLIC_STYLE[n.aplicativo] : null;
-                // Aplicativo override del color de borde + fuente (Mejora 2026-05-11):
-                // los chips de la barra "Aplicativos" deben coincidir con el color
-                // del borde del nodo, asi el usuario ve qué backend produjo cada nodo.
-                const st = stAplic
-                    ? { ...stTipo, border: stAplic.border, fontColor: stAplic.fontColor, hilightBorder: stAplic.border }
-                    : stTipo;
+                // 2026-05-12 — refactor: el color del NODO refleja el TIPO (input, concept, glosario, tool, doc, output, bypass, ...).
+                // El APLICATIVO (Gobierno/IaCore/Hidrocarburos/...) se representa con un convex hull traslúcido
+                // dibujado detrás de los nodos del mismo aplicativo (ver _drawAplicativoHulls).
+                // Esto permite leer ambas dimensiones (qué + de dónde) sin saturar cada nodo.
+                const st = TYPE_STYLE[n.type] || fallback;
                 const isFocal = n.type === "input" || n.type === "output";
                 const isTool = n.type === "tool";
                 const isDoc = n.type === "doc";
@@ -1606,6 +1770,14 @@ function chatAssistant() {
             }
             const network = new vis.Network(containerEl, data, options);
 
+            // Opción B 2026-05-12 v2: convex hull traslúcido por APLICATIVO detrás
+            // de los nodos. Cuando el usuario clickea un chip de aplicativo, el filtro
+            // `travesiaAplicativoFiltro` se propaga al hull para resaltar el aplicativo
+            // seleccionado y atenuar los demás.
+            network.on("beforeDrawing", (ctx) => {
+                this._drawAplicativoHulls(ctx, network, nodes, this.travesiaAplicativoFiltro);
+            });
+
             // P3: drag persistente en layouts hierarchical.
             // vis-network re-aplica el layout despues del drag y los nodos vuelven a
             // su posicion calculada. Al detectar dragStart, deshabilitamos el layout
@@ -1707,6 +1879,8 @@ function chatAssistant() {
                 allEdges.forEach(e => network.body.data.edges.update({
                     id: e.id, color: e._origColor || e.color
                 }));
+                // Forzar redraw del hull (el filtro cambió a null)
+                try { network.redraw(); } catch (e) {}
                 return;
             }
             this.travesiaAplicativoFiltro = aplic;
@@ -1724,6 +1898,8 @@ function chatAssistant() {
                         : { color: this._temaEsOscuro() ? "#1f2937" : "#cbd5e1", opacity: 0.3 }
                 });
             });
+            // Forzar redraw del hull para que aplique el resaltado/atenuación
+            try { network.redraw(); } catch (e) {}
         },
 
         _refrescarTravesiaVis() {
@@ -1733,6 +1909,8 @@ function chatAssistant() {
             (this._visTravesiaEdges || []).forEach(e => network.body.data.edges.update({
                 id: e.id, color: e._origColor || e.color
             }));
+            // Forzar redraw del hull (filtro limpiado)
+            try { network.redraw(); } catch (e) {}
         },
 
         toggleTravesiaTipoFiltro(tipo) {
@@ -2305,6 +2483,12 @@ function chatAssistant() {
             }
             const network = new vis.Network(containerEl, data, options);
 
+            // Opción B 2026-05-12 v2: hull con resaltado del aplicativo filtrado.
+            // El modal Vista enfocada reusa el mismo `travesiaAplicativoFiltro`.
+            network.on("beforeDrawing", (ctx) => {
+                this._drawAplicativoHulls(ctx, network, nodes, this.travesiaAplicativoFiltro);
+            });
+
             // Estabilizar y congelar para layout limpio
             network.once("stabilizationIterationsDone", () => {
                 network.setOptions({ physics: { enabled: false } });
@@ -2321,6 +2505,19 @@ function chatAssistant() {
                 const node = nodes.find(x => x.id === nid);
                 if (!node || !node._orig) return;
                 this.nodoFocusModalNodoSelect = node._orig;
+            });
+
+            // Doble-click en concepto: cerrar este modal y abrir sub-ontologia
+            network.on("doubleClick", (params) => {
+                const nid = params.nodes[0];
+                if (!nid) return;
+                const node = nodes.find(x => x.id === nid);
+                if (!node || !node._orig) return;
+                const tipo = node._orig.type;
+                if ((tipo === "concept" || tipo === "concept_related") && /^c\d+/.test(nid)) {
+                    this.cerrarNodoFocusModal();
+                    this.verGrafoConceptual(nid, node.label || node._orig.label);
+                }
             });
 
             // Hover 1-hop dimming (reusa el helper general)
@@ -2348,7 +2545,14 @@ function chatAssistant() {
 
         // Mini-toolbar del grafo: fit/zoom/reset/busqueda
         _grafoActivo() {
-            // Resuelve cual de los 2 grafos esta visible para aplicar la accion
+            // Resuelve cual de los 3 grafos esta visible para aplicar la accion.
+            // El modal "Ver en grafo" tiene prioridad sobre los demas porque es
+            // el que esta encima si fue abierto desde nodoModal o desde el resumen.
+            if (this.nodoFocusModalOpen && this._visNodoFocus) return {
+                net: this._visNodoFocus,
+                nodes: this._visNodoFocusNodes || [],
+                edges: this._visNodoFocusEdges || []
+            };
             if (this.grafoConcOpen && this._visGrafoConc) return {
                 net: this._visGrafoConc,
                 nodes: this._visGrafoConcNodes || [],
