@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Asistente Hidrocarburos · ANH</title>
     <meta name="description" content="Asistente conversacional Hidrocarburos ANH potenciado: progreso en tiempo real, telemetría, plantilla institucional, batería QA, cancelar, rerun.">
-    <link rel="stylesheet" href="assets/app.css?v=20260512-02">
+    <link rel="stylesheet" href="assets/app.css?v=20260512-05">
     <!-- vis-network local (paleta corporativa ANH, replica el ontology-viewer) -->
     <script src="lib/vis-network.min.js"></script>
     <!-- Marked.js para renderizar markdown del LLM (tablas, headings, bold, bullets) -->
@@ -1641,7 +1641,8 @@
     </div>
 
     <!-- Modal: "Ver en grafo" — mini-grafo aislado enfocado en el nodo + 1-hop.
-         Layout 2-columnas (grafo + panel detalle) replica el patron de sub-ontologia.
+         Diseño IDÉNTICO al modal de Sub-ontología: toolbar completa con buscador,
+         layout 2-columnas con resize-handle y sidebar colapsable, Métricas + Atajos.
          Independiente del drawer Travesía (no cambia tab). 2026-05-12 -->
     <div class="modal-backdrop" x-show="nodoFocusModalOpen" @click="cerrarNodoFocusModal()"
          x-transition.opacity x-cloak aria-hidden="true"></div>
@@ -1656,36 +1657,71 @@
                     <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
                 </button>
             </header>
-            <div class="modal__body" style="padding: 0; display: flex; flex-direction: column; gap: 0;">
-                <p class="muted small" style="padding: 10px 16px 6px 16px; margin: 0; border-bottom: 1px solid var(--border-default);">
-                    Vecinos directos (1 salto) del nodo seleccionado en el grafo de razonamiento actual.
-                    Click sobre un nodo para ver su detalle.
-                </p>
-                <div class="grafo-conc__layout" style="min-height: 480px;">
+            <div class="modal__body modal__body--grafo">
+                <div class="grafo-conc__layout">
                     <div class="grafo-conc__cy-wrap">
+                        <!-- Mini-toolbar para vista enfocada (idéntica al sub-grafo) -->
+                        <div class="grafo-toolbar" role="toolbar" aria-label="Controles del grafo enfocado">
+                            <label class="grafo-toolbar__search-wrap">
+                                <span class="visually-hidden">Buscar nodo</span>
+                                <input type="search" class="grafo-toolbar__search"
+                                       x-model="travesiaBusqueda"
+                                       @input.debounce.250ms="aplicarBusquedaTravesia()"
+                                       placeholder="Buscar nodo…">
+                            </label>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoFit()" title="Ajustar al viewport" aria-label="Ajustar">
+                                <svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/>
+                                </svg>
+                            </button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoZoom(1.25)" title="Acercar" aria-label="Acercar">+</button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoZoom(0.8)" title="Alejar" aria-label="Alejar">−</button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoReset()" title="Reset" aria-label="Reset">
+                                <svg class="ico" aria-hidden="true"><use href="#ico-rerun"/></svg>
+                            </button>
+                            <button type="button" class="grafo-toolbar__btn" @click="grafoExportarPng()" title="Exportar PNG" aria-label="Exportar PNG">
+                                <svg class="ico" aria-hidden="true"><use href="#ico-download"/></svg>
+                            </button>
+                        </div>
                         <div id="cy-nodo-focus-container" class="grafo-conc__cy"></div>
+                        <!-- Resize handle entre cy y sidebar -->
+                        <div class="resize-handle resize-handle--vertical resize-handle--right"
+                             @mousedown="iniciarResizeSidebar($event)"
+                             x-show="!nodoFocusSidebarColapsado"
+                             role="separator" aria-orientation="vertical"
+                             aria-label="Redimensionar panel"
+                             title="Arrastra para redimensionar el panel"></div>
+                        <button type="button" class="grafo-conc__sidebar-toggle"
+                                @click="nodoFocusSidebarColapsado = !nodoFocusSidebarColapsado; $nextTick(() => { if (_visNodoFocus) _visNodoFocus.fit({animation: {duration: 250}}); })"
+                                :title="nodoFocusSidebarColapsado ? 'Mostrar panel' : 'Ocultar panel'"
+                                :aria-pressed="!nodoFocusSidebarColapsado">
+                            <svg class="ico" x-show="!nodoFocusSidebarColapsado" aria-hidden="true"><use href="#ico-chevron-right"/></svg>
+                            <svg class="ico" x-show="nodoFocusSidebarColapsado" aria-hidden="true"><use href="#ico-chevron-left"/></svg>
+                        </button>
                     </div>
-                    <aside class="grafo-conc__metricas">
-                        <!-- Panel detalle del nodo seleccionado (replica diseño grafoConc) -->
-                        <div class="nodo-detalle nodo-detalle--inline"
-                             x-show="nodoFocusModalNodoSelect" x-transition.opacity x-cloak>
+                    <aside class="grafo-conc__metricas" :class="{'is-collapsed': nodoFocusSidebarColapsado}">
+                        <!-- Panel detalle del nodo clickeado (top del sidebar) -->
+                        <div class="nodo-detalle nodo-detalle--inline" x-show="nodoFocusModalNodoSelect" x-transition.opacity x-cloak>
                             <header class="nodo-detalle__head">
-                                <span class="badge-tipo"
-                                      :class="'badge-tipo--' + (nodoFocusModalNodoSelect?.type || '')"
+                                <span class="nodo-detalle__tipo"
+                                      :class="'nodo-detalle__tipo--' + (nodoFocusModalNodoSelect?.type || '')"
                                       x-text="_typeLabel(nodoFocusModalNodoSelect?.type)"></span>
+                                <span class="nodo-detalle__aplicativo" x-show="nodoFocusModalNodoSelect?.aplicativo"
+                                      :class="'grafo-aplicativo-chip--' + (nodoFocusModalNodoSelect?.aplicativo || '')"
+                                      x-text="_aplicativoLabel(nodoFocusModalNodoSelect?.aplicativo)"></span>
                                 <button type="button" class="btn-icon btn-icon--small"
                                         @click="nodoFocusModalNodoSelect = null" aria-label="Cerrar detalle">
                                     <svg class="ico" aria-hidden="true"><use href="#ico-x"/></svg>
                                 </button>
                             </header>
                             <h4 class="nodo-detalle__label" x-text="nodoFocusModalNodoSelect?.label"></h4>
-                            <p class="muted small" x-show="nodoFocusModalNodoSelect?.aplicativo">
-                                <strong>Aplicativo:</strong>
-                                <span x-text="_aplicativoLabel(nodoFocusModalNodoSelect?.aplicativo)"></span>
-                            </p>
                             <div class="nodo-detalle__desc nodo-detalle__desc--md"
                                  x-show="nodoFocusModalNodoSelect?.descripcion || nodoFocusModalNodoSelect?.tooltip"
                                  x-html="_renderMarkdownInline(nodoFocusModalNodoSelect?.descripcion || nodoFocusModalNodoSelect?.tooltip)"></div>
+                            <p class="nodo-detalle__desc muted small"
+                               x-show="!(nodoFocusModalNodoSelect?.descripcion || nodoFocusModalNodoSelect?.tooltip)">
+                                Sin descripción asociada.
+                            </p>
                             <dl class="nodo-detalle__meta">
                                 <div class="nodo-detalle__row">
                                     <dt>ID interno</dt>
@@ -1721,17 +1757,37 @@
                                         <dd class="mono small" x-text="nodoFocusModalNodoSelect.uri"></dd>
                                     </div>
                                 </template>
+                                <template x-if="nodoFocusModalNodoSelect?.id === nodoFocusModalData?.focalId">
+                                    <div class="nodo-detalle__row">
+                                        <dt>Nodo focal</dt>
+                                        <dd>Sí (origen de la vista)</dd>
+                                    </div>
+                                </template>
                             </dl>
+                            <button type="button" class="btn-link small"
+                                    x-show="(nodoFocusModalNodoSelect?.type === 'concept_related' || nodoFocusModalNodoSelect?.type === 'concept') && /^c\d+/.test(nodoFocusModalNodoSelect?.id || '')"
+                                    @click="cerrarNodoFocusModal(); verGrafoConceptual(nodoFocusModalNodoSelect.id, nodoFocusModalNodoSelect.label)">
+                                → Explorar sub-ontología
+                            </button>
                         </div>
-                        <p class="muted small" x-show="!nodoFocusModalNodoSelect" style="padding: 16px;">
-                            Click sobre un nodo del grafo para ver su detalle aquí.
+
+                        <h3>Métricas</h3>
+                        <dl class="metricas-grid">
+                            <dt>Nodos visibles</dt><dd x-text="(nodoFocusModalData?.nodes || []).length"></dd>
+                            <dt>Relaciones</dt><dd x-text="(nodoFocusModalData?.edges || []).length"></dd>
+                            <dt>Aplicativos</dt><dd x-text="(new Set((nodoFocusModalData?.nodes || []).map(n => n.aplicativo).filter(Boolean))).size"></dd>
+                            <dt>Profundidad</dt><dd>1 salto</dd>
+                        </dl>
+                        <p class="muted small" style="margin-top: var(--space-3)">
+                            <strong>Atajos:</strong><br>
+                            · Hover nodo → resalta vecinos<br>
+                            · Click → muestra detalle aquí<br>
+                            · Doble-click concept → explorar sub-ontología<br>
+                            · Scroll → zoom · Drag → mover
                         </p>
                     </aside>
                 </div>
             </div>
-            <footer class="modal__foot">
-                <button type="button" class="btn-primary" @click="cerrarNodoFocusModal()">Cerrar</button>
-            </footer>
         </div>
     </div>
 
@@ -1862,6 +1918,6 @@
 
     <script src="lib/alpine.min.js" defer></script>
     <script src="assets/data.js?v=20260510-16"></script>
-    <script src="assets/app.js?v=20260512-02"></script>
+    <script src="assets/app.js?v=20260512-05"></script>
 </body>
 </html>
